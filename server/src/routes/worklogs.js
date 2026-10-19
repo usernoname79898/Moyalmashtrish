@@ -6,6 +6,7 @@ const { db } = require('../db');
 const auth = require('../auth');
 const storage = require('../storage');
 const inv = require('../inventory');
+const { normalizeCurrency } = require('../currency');
 
 const router = require('../asyncRoute').wrapRouter(express.Router());
 router.use(auth.authenticate);
@@ -25,7 +26,7 @@ const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
 const WORK_LIST_FIELDS = `
   w.id, w.master_id, w.title, w.customer_name, w.customer_phone, w.car_brand, w.car_model,
-  w.car_number, w.service_type, w.description, w.start_date, w.end_date, w.price, w.status,
+  w.car_number, w.service_type, w.description, w.start_date, w.end_date, w.price, w.currency, w.status,
   w.is_public, w.notes, w.created_at, w.updated_at, u.full_name AS master_name`;
 
 function ensureWorkDir() {
@@ -275,6 +276,15 @@ function validateWorkBody(b, previousServiceType, catalog) {
   }
   if (!STATUSES.includes(status)) return { error: 'Ish holati noto\'g\'ri' };
   if (!Number.isFinite(price) || price < 0 || price > 1e12) return { error: 'Narx noto\'g\'ri' };
+  // The price is the amount charged for the job and is quoted in one currency,
+  // chosen with the log. It is a NUMERIC(14,2) label like the warehouse's, so the
+  // historical decimal support stays; the currency only decides how it is shown.
+  let currency;
+  try {
+    currency = normalizeCurrency(b.currency);
+  } catch (err) {
+    return { error: err.message };
+  }
   const clean = (v, n) => String(v || '').trim().slice(0, n);
   return {
     title,
@@ -288,6 +298,7 @@ function validateWorkBody(b, previousServiceType, catalog) {
     start_date: clean(b.start_date, 20),
     end_date: clean(b.end_date, 20),
     price,
+    currency,
     status,
     notes: clean(b.notes, 2000),
   };
@@ -357,7 +368,7 @@ router.get('/stats', async (req, res) => {
   }
   const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
   const row = await db
-    .prepare(`SELECT COUNT(*)::int total, COALESCE(SUM(CASE WHEN status = 'Tugallangan' THEN 1 ELSE 0 END), 0)::int completed, COALESCE(SUM(CASE WHEN status = 'Jarayonda' THEN 1 ELSE 0 END), 0)::int in_progress, COALESCE(SUM(CASE WHEN status = 'Tugallangan' THEN price ELSE 0 END), 0) earnings FROM work_logs ${where}`)
+    .prepare(`SELECT COUNT(*)::int total, COALESCE(SUM(CASE WHEN status = 'Tugallangan' THEN 1 ELSE 0 END), 0)::int completed, COALESCE(SUM(CASE WHEN status = 'Jarayonda' THEN 1 ELSE 0 END), 0)::int in_progress, COALESCE(SUM(CASE WHEN status = 'Tugallangan' AND currency = 'UZS' THEN price ELSE 0 END), 0) earnings FROM work_logs ${where}`)
     .get(params);
   res.json({ stats: { total: row.total, completed: row.completed, inProgress: row.in_progress, earnings: Number(row.earnings) || 0 } });
 });
@@ -395,12 +406,12 @@ router.post('/', async (req, res) => {
     const work = await t
       .prepare(`INSERT INTO work_logs
         (master_id, title, customer_name, customer_phone, car_brand, car_model, car_number,
-         service_type, description, start_date, end_date, price, status, notes, is_public)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         service_type, description, start_date, end_date, price, currency, status, notes, is_public)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING id`)
       .one(
         masterId, v.title, v.customer_name, v.customer_phone, v.car_brand, v.car_model, v.car_number,
-        v.service_type, v.description, v.start_date, v.end_date, v.price, v.status, v.notes, isPublic
+        v.service_type, v.description, v.start_date, v.end_date, v.price, v.currency, v.status, v.notes, isPublic
       );
     await consumeMaterials(t, req, work.id, materials);
     return work;
@@ -454,12 +465,12 @@ router.put('/:id', async (req, res) => {
   // so an unawaited write would return the previous values.
   await db.prepare(`UPDATE work_logs SET
       title = ?, customer_name = ?, customer_phone = ?, car_brand = ?, car_model = ?, car_number = ?,
-      service_type = ?, description = ?, start_date = ?, end_date = ?, price = ?, status = ?, notes = ?,
+      service_type = ?, description = ?, start_date = ?, end_date = ?, price = ?, currency = ?, status = ?, notes = ?,
       is_public = ?, updated_at = app_now()
     WHERE id = ?`)
     .run(
       v.title, v.customer_name, v.customer_phone, v.car_brand, v.car_model, v.car_number,
-      v.service_type, v.description, v.start_date, v.end_date, v.price, v.status, v.notes,
+      v.service_type, v.description, v.start_date, v.end_date, v.price, v.currency, v.status, v.notes,
       isPublic, work.id
     );
   res.json({ work: await decorate(await loadWork(work.id)) });

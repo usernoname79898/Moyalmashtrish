@@ -5,11 +5,13 @@ import Icon from '../../components/icons';
 import { Loading, Alert, Badge, Modal, Toggle, ConfirmDialog, EmptyState, Spinner } from '../../components/ui';
 import { SERVICE_NAMES, serviceOptions } from '../../serviceCatalog';
 import { useServiceTypes } from '../../serviceTypes';
+import { money as formatMoney, DEFAULT_CURRENCY } from '../../money';
+import CurrencySelect from '../../components/CurrencySelect';
 
 const STATUSES = ['Jarayonda', 'Tugallangan'];
 
-function fmt(c) {
-  return new Intl.NumberFormat('uz-UZ').format(Number(c) || 0) + ' so\'m';
+function fmt(c, currency = DEFAULT_CURRENCY) {
+  return formatMoney(c, currency);
 }
 
 export default function WorkLogs() {
@@ -263,7 +265,7 @@ function WorkCard({ w, isSA, onEdit, onDelete, onOpenLightbox, reload, onError }
             {w.car_number && <span>#{w.car_number}</span>}
             {w.customer_name && <span>Mijoz: {w.customer_name}</span>}
             {w.start_date && <span>📅 {w.start_date}</span>}
-            {Number(w.price) > 0 && <span className="font-semibold text-emerald-400">{fmt(w.price)}</span>}
+            {Number(w.price) > 0 && <span className="font-semibold text-emerald-400">{fmt(w.price, w.currency)}</span>}
           </div>
           {w.description && <p className="mt-2 line-clamp-2 text-sm text-white/60">{w.description}</p>}
         </div>
@@ -299,7 +301,7 @@ function WorkCard({ w, isSA, onEdit, onDelete, onOpenLightbox, reload, onError }
 const EMPTY_FORM = {
   title: '', customer_name: '', customer_phone: '', car_brand: '', car_model: '', car_number: '',
   service_type: '', description: '', start_date: '', end_date: '', price: '', status: 'Jarayonda',
-  notes: '', is_public: false, master_id: '',
+  notes: '', is_public: false, master_id: '', currency: DEFAULT_CURRENCY,
 };
 
 function WorkForm({ isSA, initial, masters, onClose, onSaved }) {
@@ -525,8 +527,9 @@ function WorkForm({ isSA, initial, masters, onClose, onSaved }) {
             <label className="label">Ish tugash sanasi</label>
             <input type="date" className="field" value={form.end_date} onChange={set('end_date')} />
           </div>
+          <CurrencySelect value={form.currency} onChange={set('currency')} label="Valyuta" />
           <div>
-            <label className="label">Ish narxi (so'm)</label>
+            <label className="label">Ish narxi</label>
             <input type="number" min="0" className="field" value={form.price} onChange={set('price')} placeholder="550000" />
           </div>
           <div>

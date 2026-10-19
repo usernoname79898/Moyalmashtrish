@@ -4,6 +4,8 @@ import Icon from '../../components/icons';
 import { Loading, Alert, Badge, Modal, ConfirmDialog } from '../../components/ui';
 import { serviceOptions } from '../../serviceCatalog';
 import { useServiceTypes } from '../../serviceTypes';
+import { money as formatMoney, DEFAULT_CURRENCY } from '../../money';
+import CurrencySelect from '../../components/CurrencySelect';
 
 const STATUS_META = {
   unpaid: { label: "To'lanmagan", badge: 'danger', row: 'bg-red-500/[0.04]' },
@@ -26,11 +28,11 @@ const SORTS = [
   { key: 'remaining', label: 'Eng katta qolgan qarz' },
 ];
 
-// 250000 -> "250 000". Sum is rendered server-side derived; grouping is only
-// presentational.
-function som(n) {
-  const v = Number(n || 0);
-  return `${v.toLocaleString('ru-RU').replace(/,/g, ' ')} so'm`;
+// 250000 -> "250 000 so'm"; a USD row keeps its cents. Every amount carries its
+// own currency, so the caller passes the row's currency through; UZS is the
+// historical default for anything that has none.
+function som(n, currency = DEFAULT_CURRENCY) {
+  return formatMoney(n, currency);
 }
 
 export default function DebtLedger() {
@@ -89,9 +91,9 @@ export default function DebtLedger() {
   const cards = useMemo(() => {
     if (!stats) return [];
     return [
-      { label: 'Jami qarz', value: som(stats.totalDebt), icon: 'money', color: 'bg-[rgb(var(--c-primary))]' },
-      { label: "To'lanishi kerak", value: som(stats.totalRemaining), icon: 'clock', color: 'bg-red-500' },
-      { label: "To'liq to'langan", value: som(stats.totalPaid), icon: 'check', color: 'bg-emerald-500' },
+      { label: 'Jami qarz (UZS)', value: som(stats.totalDebt), icon: 'money', color: 'bg-[rgb(var(--c-primary))]' },
+      { label: "To'lanishi kerak (UZS)", value: som(stats.totalRemaining), icon: 'clock', color: 'bg-red-500' },
+      { label: "To'liq to'langan (UZS)", value: som(stats.totalPaid), icon: 'check', color: 'bg-emerald-500' },
       { label: 'Qarzdorlar soni', value: stats.totalDebtors, icon: 'user', color: 'bg-sky-500' },
     ];
   }, [stats]);
@@ -201,9 +203,9 @@ export default function DebtLedger() {
                         </td>
                         <td className="px-4 py-3 text-white/70">{d.phone}</td>
                         <td className="px-4 py-3 text-white/70">{d.service}</td>
-                        <td className="px-4 py-3 text-right text-white/80">{som(d.debt_amount)}</td>
-                        <td className="px-4 py-3 text-right text-emerald-300/90">{som(d.paid_amount)}</td>
-                        <td className="px-4 py-3 text-right font-bold text-red-300">{som(d.remaining_amount)}</td>
+                        <td className="px-4 py-3 text-right text-white/80">{som(d.debt_amount, d.currency)}</td>
+                        <td className="px-4 py-3 text-right text-emerald-300/90">{som(d.paid_amount, d.currency)}</td>
+                        <td className="px-4 py-3 text-right font-bold text-red-300">{som(d.remaining_amount, d.currency)}</td>
                         <td className="px-4 py-3">
                           <Badge kind={archived ? 'default' : meta.badge}>{archived ? 'Arxiv' : meta.label}</Badge>
                         </td>
@@ -242,9 +244,9 @@ export default function DebtLedger() {
                     <Badge kind={archived ? 'default' : meta.badge}>{archived ? 'Arxiv' : meta.label}</Badge>
                   </div>
                   <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                    <div><div className="text-[10px] uppercase text-white/40">Qarz</div><div className="text-xs font-semibold">{som(d.debt_amount)}</div></div>
-                    <div><div className="text-[10px] uppercase text-white/40">To'langan</div><div className="text-xs font-semibold text-emerald-300">{som(d.paid_amount)}</div></div>
-                    <div><div className="text-[10px] uppercase text-white/40">Qolgan</div><div className="text-xs font-bold text-red-300">{som(d.remaining_amount)}</div></div>
+                    <div><div className="text-[10px] uppercase text-white/40">Qarz</div><div className="text-xs font-semibold">{som(d.debt_amount, d.currency)}</div></div>
+                    <div><div className="text-[10px] uppercase text-white/40">To'langan</div><div className="text-xs font-semibold text-emerald-300">{som(d.paid_amount, d.currency)}</div></div>
+                    <div><div className="text-[10px] uppercase text-white/40">Qolgan</div><div className="text-xs font-bold text-red-300">{som(d.remaining_amount, d.currency)}</div></div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 border-t border-white/5 pt-3">
                     <RowActions
@@ -398,12 +400,12 @@ function ServiceSelect({ value, onChange, required = false, disabled = false }) 
 }
 
 function AddDebtModal({ open, onClose, onSaved }) {
-  const [form, setForm] = useState({ full_name: '', phone: '', service: '', debt_amount: '', paid_amount: '', description: '' });
+  const [form, setForm] = useState({ full_name: '', phone: '', service: '', debt_amount: '', paid_amount: '', description: '', currency: DEFAULT_CURRENCY });
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (open) { setForm({ full_name: '', phone: '', service: '', debt_amount: '', paid_amount: '', description: '' }); setMsg(null); }
+    if (open) { setForm({ full_name: '', phone: '', service: '', debt_amount: '', paid_amount: '', description: '', currency: DEFAULT_CURRENCY }); setMsg(null); }
   }, [open]);
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -443,6 +445,7 @@ function AddDebtModal({ open, onClose, onSaved }) {
             <label className="label">Ko'rsatilgan xizmat *</label>
             <ServiceSelect value={form.service} onChange={set('service')} required />
           </div>
+          <CurrencySelect value={form.currency} onChange={set('currency')} />
           <div>
             <label className="label">Jami qarz summasi *</label>
             <input className="field" inputMode="numeric" value={form.debt_amount} onChange={set('debt_amount')} placeholder="350000" required />
@@ -493,6 +496,7 @@ function EditDebtModal({ debt, onClose, onSaved }) {
       service: debt.service || '',
       debt_amount: String(debt.debt_amount == null ? '' : debt.debt_amount),
       description: debt.description || '',
+      currency: debt.currency || DEFAULT_CURRENCY,
     });
     setMsg(null);
     setBusy(false);
@@ -514,6 +518,7 @@ function EditDebtModal({ debt, onClose, onSaved }) {
         service: form.service,
         debt_amount: form.debt_amount.replace(/\s/g, ''),
         description: form.description,
+        currency: form.currency,
       });
       await onSaved();
     } catch (err) {
@@ -539,17 +544,21 @@ function EditDebtModal({ debt, onClose, onSaved }) {
             <label className="label">Ko'rsatilgan xizmat *</label>
             <ServiceSelect value={form.service} onChange={set('service')} required disabled={busy} />
           </div>
+          <CurrencySelect value={form.currency} onChange={set('currency')} disabled={busy || Number(debt.paid_amount) > 0} />
           <div>
             <label className="label">Jami qarz summasi *</label>
             <input className="field" inputMode="numeric" value={form.debt_amount} onChange={set('debt_amount')} required disabled={busy} />
           </div>
         </div>
+        {Number(debt.paid_amount) > 0 && (
+          <p className="text-xs text-white/40">To'lov qilingan, valyutani o'zgartirib bo'lmaydi.</p>
+        )}
         <div>
           <label className="label">Izoh</label>
           <textarea className="field min-h-[80px]" value={form.description} onChange={set('description')} disabled={busy} />
         </div>
         <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-white/55">
-          To'langan summa {som(debt.paid_amount)} · qolgan qarz {som(debt.remaining_amount)}. To'lovni faqat "To'lov" orqali o'zgartirasiz.
+          To'langan summa {som(debt.paid_amount, debt.currency)} · qolgan qarz {som(debt.remaining_amount, debt.currency)}. To'lovni faqat "To'lov" orqali o'zgartirasiz.
         </div>
         <div className="flex justify-end gap-3 pt-2">
           <button type="button" onClick={onClose} className="rounded-xl border border-white/15 px-5 py-2.5 text-sm text-white/80 hover:bg-white/5">Bekor qilish</button>
@@ -594,9 +603,9 @@ function PaymentModal({ debt, onClose, onSaved }) {
       <form onSubmit={onSubmit} className="space-y-4">
         {msg && <Alert kind={msg.kind}>{msg.text}</Alert>}
         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm">
-          <div className="flex justify-between"><span className="text-white/50">Qarz</span><span className="font-semibold">{som(debt.debt_amount)}</span></div>
-          <div className="mt-1 flex justify-between"><span className="text-white/50">To'langan</span><span className="font-semibold text-emerald-300">{som(debt.paid_amount)}</span></div>
-          <div className="mt-1 flex justify-between border-t border-white/10 pt-1"><span className="text-white/50">Qolgan</span><span className="font-bold text-red-300">{som(debt.remaining_amount)}</span></div>
+          <div className="flex justify-between"><span className="text-white/50">Qarz</span><span className="font-semibold">{som(debt.debt_amount, debt.currency)}</span></div>
+          <div className="mt-1 flex justify-between"><span className="text-white/50">To'langan</span><span className="font-semibold text-emerald-300">{som(debt.paid_amount, debt.currency)}</span></div>
+          <div className="mt-1 flex justify-between border-t border-white/10 pt-1"><span className="text-white/50">Qolgan</span><span className="font-bold text-red-300">{som(debt.remaining_amount, debt.currency)}</span></div>
         </div>
         <div>
           <label className="label">To'lov summasi *</label>
@@ -640,7 +649,7 @@ function HistoryModal({ debt, onClose }) {
               {data.payments.map((p) => (
                 <div key={p.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm">
                   <div>
-                    <div className="font-semibold text-emerald-300">{som(p.amount)}</div>
+                    <div className="font-semibold text-emerald-300">{som(p.amount, p.currency)}</div>
                     {p.note && <div className="text-xs text-white/45">{p.note}</div>}
                   </div>
                   <div className="text-right text-xs text-white/40">
@@ -727,7 +736,7 @@ function DeleteModal({ debt, onClose, onDone }) {
           <p className="text-sm text-white/70">Bu qarz yozuvini o'chirishni xohlaysizmi?</p>
           <p className="mt-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm">
             <span className="font-semibold">{debt.full_name}</span>
-            <span className="ml-2 text-white/45">{som(debt.debt_amount)} · to'langan {som(debt.paid_amount)}</span>
+            <span className="ml-2 text-white/45">{som(debt.debt_amount, debt.currency)} · to'langan {som(debt.paid_amount, debt.currency)}</span>
           </p>
           <div className="mt-6 flex justify-end gap-3">
             <button type="button" onClick={onClose} className="rounded-xl border border-white/15 px-5 py-2.5 text-sm text-white/80 hover:bg-white/5">Bekor qilish</button>

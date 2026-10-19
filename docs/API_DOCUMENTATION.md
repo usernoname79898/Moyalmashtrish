@@ -22,7 +22,7 @@ below exists in the code; nothing here is speculative.
 | Auth | Session token (JWT) sent as an HttpOnly cookie **or** `Authorization: Bearer` |
 | Roles | `super_admin`, `master` |
 | Master permissions | `content`, `services`, `media` (per-user array) |
-| Money | Integer so'm for the debt ledger; 2-decimal numbers for inventory prices |
+| Money | Every amount carries a `currency` (`UZS` or `USD`). UZS is whole so'm; USD is 2-decimal. Currencies are never converted or summed together |
 | Timestamps | UTC text `YYYY-MM-DD HH:MM:SS` (never ISO-8601 with `T`/`Z`) |
 
 ---
@@ -188,10 +188,24 @@ value is a `400`, not a `500`.
 
 ### 4.3 Money & quantities
 
+Every money field now carries an explicit `currency` alongside its amount. Two
+codes are supported — `UZS` and `USD` — and they are **never** converted or added
+together anywhere in the API: statistics and exports keep them in separate
+buckets. An absent/empty `currency` defaults to `UZS`; any other value →
+`400 Valyuta noto'g'ri: faqat UZS yoki USD`.
+
+| Currency | Amount rule |
+|---|---|
+| `UZS` | **Whole so'm only** — the pattern is `^\d+$`, so `12.5`, `-5`, `1e9` and `"12abc"` are all rejected with `400`. No subdivision is stored. |
+| `USD` | Up to 2 decimals — `^\d+(\.\d{1,2})?$`, e.g. `1500.75`. |
+| Any | Max value `999999999999.99` (`NUMERIC(14,2)`). A payment must be in the **same currency** as the record it pays down → `400`. A record's currency is fixed once money has moved (see §12.3). |
+
 | Domain | Rule |
 |---|---|
-| Debt ledger (`debt_amount`, `paid_amount`, `amount`) | **Plain integers only** — `12.5`, `1e9`, `"12abc"` are rejected with `400`. Max: safe-integer range. |
-| Inventory prices (`cost_price`, `markup_amount`, `sale_price`) | Up to 2 decimals, `0 … 9999999999.99` |
+| Debt ledger (`debt_amount`, `paid_amount`, `amount`) | Currency-aware (see table above); stored `NUMERIC(14,2)`. Legacy integer values are unchanged. |
+| Expenses ledger (`unit_price`, `total_amount`, `paid_amount`, payment `amount`) | Currency-aware; `total_amount` may also be derived as `quantity × unit_price`. |
+| Work-log `price` | `NUMERIC(14,2)`, up to 2 decimals; `currency` labels the amount. |
+| Inventory prices (`cost_price`, `markup_amount`, `sale_price`) | `NUMERIC(12,2)`, up to 2 decimals, `0 … 9999999999.99`; `currency` is a label and **does not change the 2-decimal precision**. |
 | Inventory quantities | Up to 3 decimals, `0 … 999999999.999`; **filters must be whole numbers** |
 | `sale_price` | Not a stored column — always `cost_price + markup_amount`, computed by the database |
 
@@ -519,7 +533,7 @@ all. The list endpoint is **not paginated**.
   "car_brand": "Chevrolet", "car_model": "Nexia", "car_number": "01A123BC",
   "service_type": "Mator", "description": "…",
   "start_date": "2026-10-01", "end_date": "2026-10-03",
-  "price": 350000, "status": "Jarayonda",
+  "price": 350000, "currency": "UZS", "status": "Jarayonda",
   "is_public": 0, "notes": "…",
   "created_at": "2026-10-01 10:12:44", "updated_at": "2026-10-03 18:02:10",
   "images": [ { "id": 4, "image_path": "w-…-1.jpg", "original_filename": "a.jpg" } ],
@@ -530,7 +544,7 @@ all. The list endpoint is **not paginated**.
 ```
 
 - `status`: `Jarayonda` | `Tugallangan` (only these two).
-- `price`: number ≥ 0 (max `1e12`).
+- `price`: number ≥ 0 (max `1e12`), labelled by `currency` (`UZS` default, or `USD`); see §4.3.
 - `service_type`: must match a row in the `services` catalogue (see §10.5).
 - `is_public`: `0`/`1`, only `super_admin` may change it.
 
@@ -539,7 +553,7 @@ all. The list endpoint is **not paginated**.
 | Method | Path | Success | Description |
 |---|---|---|---|
 | GET | `/` | `{"worklogs":[…]}` | List, newest first |
-| GET | `/stats` | `{"stats":{total,completed,inProgress,earnings}}` | Aggregates |
+| GET | `/stats` | `{"stats":{total,completed,inProgress,earnings}}` | Aggregates (`earnings` is UZS-only; see §4.3) |
 | POST | `/` | `201 {"work":{…}}` | Create |
 | GET | `/services` | `{"services":[…]}` | Picker catalogue (§9.2) |
 | GET | `/:id` | `{"work":{…}}` | Detail (includes `materials`) |
@@ -641,12 +655,15 @@ renamed, existing work logs keep the old spelling.
   "viscosity": "5W-30", "unit": "liter", "package_size": 4,
   "current_quantity": 48.5, "minimum_quantity": 10,
   "cost_price": 185000, "markup_amount": 25000, "sale_price": 210000,
+  "currency": "UZS",
   "is_active": 1, "created_at": "…", "updated_at": "…",
   "state": "ok", "state_label": "Yetarli" }
 ```
 
 - `type`: `oil` | `filter`. `unit` is **derived**: oil → `liter`, filter → `piece`.
 - `viscosity` is required for oil, forbidden for filter.
+- `currency` labels the prices (`UZS` default, or `USD`); prices stay 2-decimal
+  regardless of code (§4.3).
 - `state` / `state_label` are computed: `ok`/`Yetarli`, `low`/`Kam`, `out`/`Tugagan`.
 - `current_quantity` can never be written directly — only through movements.
 
@@ -775,10 +792,12 @@ Additional gates: `DELETE /:id` and `POST /:id/purge` need the delete pass key;
 { "id": 5, "full_name": "Alisher Nazarov", "phone": "+998901234567",
   "service": "Mator", "description": "…",
   "debt_amount": 500000, "paid_amount": 200000, "remaining_amount": 300000,
+  "currency": "UZS",
   "status": "partially_paid", "status_label": "Qisman to'langan",
   "created_at": "…", "updated_at": "…", "deleted_at": null }
 ```
 
+- `currency` is `UZS` (default) or `USD`; see §4.3 for the amount rules per code.
 - `status` is **derived** from the amounts, never taken from the request:
   `unpaid` (0 paid) | `partially_paid` | `paid`.
 - `status_label` (Uzbek) is added on every read.
@@ -791,7 +810,7 @@ Additional gates: `DELETE /:id` and `POST /:id/purge` need the delete pass key;
 |---|---|---|---|
 | GET | `/` | `{"debts":[…],"pagination":{…},"archived":false}` | List |
 | POST | `/` | `201 {"debt":{…}}` | Create |
-| GET | `/stats` | `{"totalDebtors":…,"totalDebt":…,"totalRemaining":…,"totalPaid":…,"openDebtors":…,"partialDebtors":…,"paidDebtors":…,"createdToday":…,"archived":…}` | Aggregates (live rows) |
+| GET | `/stats` | `{"totalDebtors":…,"totalDebt":…,"totalRemaining":…,"totalPaid":…,"openDebtors":…,"partialDebtors":…,"paidDebtors":…,"createdToday":…,"archived":…,"currencies":[{"currency":"UZS","count":…,"openCount":…,"totalDebt":…,"totalPaid":…,"totalRemaining":…},{"currency":"USD",…}]}` | Aggregates (live rows). Counts are currency-agnostic; the scalar money totals are **UZS-only** (see §12.1/§4.3) — read `currencies` for the per-currency split. `currencies` always lists both codes, zero-filled. |
 | GET | `/:id` | `{"debt":…,"payments":[…],"audit_logs":[…]}` | Detail |
 | PATCH | `/:id` | `{"debt":{…}}` | Edit |
 | POST | `/:id/payments` | `201 {"debt":{…}}` | Record a payment |
@@ -808,6 +827,7 @@ Additional gates: `DELETE /:id` and `POST /:id/purge` need the delete pass key;
 | `page`, `per_page` | see §4.4 | 1 / 20 |
 | `filter` (alias `status`) | `all`, `unpaid`, `partially_paid`, `paid`, `archive` | `all` |
 | `sort` | `newest`, `oldest`, `largest`, `remaining` | `newest` |
+| `currency` | `UZS`, `USD` | — (all) |
 | `q` (alias `search`) | matches `full_name`, `phone`, `service` | — |
 
 `filter=archive` switches to archived rows (`deleted_at IS NOT NULL`) and sets
@@ -821,20 +841,26 @@ Exports honour the same `filter`/`sort`/`q` (pagination is ignored).
 
 ```json
 { "full_name": "…", "phone": "+998901234567", "service": "Mator",
-  "description": "…", "debt_amount": 500000, "paid_amount": 0 }
+  "description": "…", "debt_amount": 500000, "paid_amount": 0,
+  "currency": "UZS" }
 ```
 
 - `full_name`, `phone`, `service` required (≤ 200 / 60 / 300 chars).
-- `debt_amount` must be a positive integer → `400 Qarz summasi 0 dan katta bo'lishi kerak`.
-- `paid_amount` optional (0), must be an integer ≤ `debt_amount`.
+- `currency` optional (defaults to `UZS`); an unknown code → `400`.
+- `debt_amount` must be a positive amount in the chosen currency (§4.3) →
+  e.g. a fractional so'm → `400 Qarz summasi butun son (so'm) bo'lishi kerak …`;
+  zero/negative → `400 Qarz summasi 0 dan katta bo'lishi kerak`.
+- `paid_amount` optional (0), same currency, must be ≤ `debt_amount`.
 - `address` in the body is accepted and **discarded**.
 - An opening `paid_amount > 0` also creates a payment row
   (`Boshlang'ich to'lov`) and an audit `created` entry.
 
 **PATCH `/:id`**
 
-- Editable: `full_name`, `phone`, `service`, `description`, `debt_amount`.
+- Editable: `full_name`, `phone`, `service`, `description`, `debt_amount`, `currency`.
 - **Not editable:** `paid_amount` (only payments/mark-paid move it).
+- `currency` may only be corrected while `paid_amount == 0`; changing it once
+  money has moved → `409 To'lov qilingan qarzning valyutasini o'zgartirish mumkin emas`.
 - A *changed* `service` must be an active catalogue service →
   `400 Xizmat ro'yxatdan tanlanishi kerak`. An unchanged one is always kept.
 - Lowering `debt_amount` below `paid_amount` →
@@ -844,11 +870,14 @@ Exports honour the same `filter`/`sort`/`q` (pagination is ignored).
 **POST `/:id/payments`**
 
 ```json
-{ "amount": 100000, "note": "Naqd" }
+{ "amount": 100000, "note": "Naqd", "currency": "UZS" }
 ```
 
-- `amount` positive integer, ≤ current `remaining_amount` →
-  otherwise `400 To'lov qoldiq summadan (300000 so'm) katta bo'lishi mumkin emas`.
+- `amount` is a positive amount in the debt's currency (§4.3), ≤ current
+  `remaining_amount` → otherwise
+  `400 To'lov qoldiq summadan (300000 so'm) katta bo'lishi mumkin emas`.
+- Optional `currency` must match the debt's own currency, else
+  `400 To'lov valyutasi qarz valyutasiga mos kelishi kerak`.
 - Row lock (`FOR UPDATE`) serialises concurrent payments.
 - `201` with the updated debt.
 
@@ -891,8 +920,8 @@ refused if the debt ever received a payment →
 ### 12.5 Payments & audit shapes
 
 ```json
-{ "id": 11, "amount": 100000, "note": "Naqd", "created_at": "…",
-  "created_by": 1, "created_by_name": "…" }
+{ "id": 11, "amount": 100000, "currency": "UZS", "note": "Naqd",
+  "created_at": "…", "created_by": 1, "created_by_name": "…" }
 ```
 
 ```json
@@ -1151,7 +1180,137 @@ are written for the operator and are already localized (Uzbek).
 
 ---
 
-## 17. Full endpoint reference
+## 17. Moy hisob-kitob (expenses) API (`/api/admin/expenses`)
+
+The supplier ledger: what the workshop owes for oil, filters, services and other
+purchases. **Entire router: `super_admin` only** — anonymous → `401`, a master →
+`403 Forbidden: insufficient permissions`. There is no public path.
+
+### 17.1 Expense object
+
+```json
+{ "id": 9, "item_name": "Mobil 5W-30", "description": "…",
+  "supplier": "Moy Optom", "phone": "+998901112233",
+  "category": "oil", "category_label": "Moy",
+  "quantity": 4, "unit": "litr", "unit_price": 45000,
+  "total_amount": 180000, "paid_amount": 80000, "remaining_amount": 100000,
+  "currency": "UZS", "money_symbol": "so'm",
+  "status": "partially_paid", "status_label": "Qisman to'langan",
+  "due_date": "", "master_id": null, "created_by": 1,
+  "created_at": "…", "updated_at": "…", "deleted_at": null }
+```
+
+- `category`: `oil` | `filter` | `service` | `other` (default `other`); labels are
+  `Moy` | `Filtr` | `Xizmat` | `Boshqa`.
+- `status` is **derived** from the amounts: `unpaid` (0 paid) |
+  `partially_paid` | `paid`. `status_label` (Uzbek) is added on every read.
+- `remaining_amount` is a generated column — client values are ignored.
+- `currency` is `UZS` (default) or `USD`; `money_symbol` follows it (§4.3).
+
+### 17.2 Endpoints
+
+| Method | Path | Success | Description |
+|---|---|---|---|
+| GET | `/` | `{"expenses":[…],"pagination":{…},"archived":false}` | List |
+| POST | `/` | `201 {"expense":{…}}` | Create |
+| GET | `/stats` | `{"stats":{"total":…,"unpaid":…,"partiallyPaid":…,"paid":…,"archived":…,"currencies":[…]}}` | Aggregates. Counts are currency-agnostic; `currencies` always lists `UZS` and `USD` zero-filled, each with `count`, `openCount`, `totalAmount`, `totalPaid`, `totalRemaining` — never summed across codes. |
+| GET | `/:id` | `{"expense":…,"payments":[…],"audit_logs":[…]}` | Detail |
+| PATCH | `/:id` | `{"expense":{…}}` | Edit |
+| POST | `/:id/payments` | `201 {"expense":{…}}` | Record a payment |
+| POST | `/:id/payments/:paymentId/void` | `{"expense":{…}}` | Void a payment |
+| POST | `/:id/mark-paid` | `{"expense":{…}}` | Settle fully |
+| DELETE | `/:id` | `{"ok":true,"expense":{…}}` | Archive (soft delete) + pass key |
+| GET | `/export.csv` | CSV attachment | Current view |
+
+**List query params**
+
+| Param | Values | Default |
+|---|---|---|
+| `page`, `per_page` | see §4.4 | 1 / 20 |
+| `filter` (alias `status`) | `all`, `unpaid`, `partially_paid`, `paid`, `archive` | `all` |
+| `sort` | `newest`, `oldest`, `largest`, `remaining` | `newest` |
+| `currency` | `UZS`, `USD` | — (all) |
+| `category` | `oil`, `filter`, `service`, `other` | — (all) |
+| `master_id` | a user id | — |
+| `supplier` | substring | — |
+| `date_from`, `date_to` | `YYYY-MM-DD` | — |
+| `q` (alias `search`) | matches `item_name`, `supplier`, `phone` | — |
+
+`filter=archive` switches to archived rows and sets `"archived": true`. The CSV
+export honours the same filters (pagination is ignored) and includes a `Valyuta`
+column so a reader can separate so'm from dollar rows; it is never blended.
+
+### 17.3 Create / update rules
+
+**POST `/`**
+
+```json
+{ "item_name": "Mobil 5W-30", "category": "oil", "quantity": 4, "unit": "litr",
+  "unit_price": 45000, "supplier": "Moy Optom", "phone": "+998901112233",
+  "currency": "UZS", "due_date": "2026-07-01" }
+```
+
+- `item_name` (alias `name`) required (≤ 200).
+- `quantity` optional (default 1): up to 3 decimals, strictly positive.
+- `total_amount` (alias `amount`) optional. If omitted it is **derived** as
+  `quantity × unit_price` (rounded to the currency's precision); with neither a
+  total nor a `unit_price` → `400 Umumiy summa to'ldirilishi shart`.
+- `currency` optional (defaults `UZS`); an unknown code → `400`.
+- `paid_amount` optional (0), same currency, ≤ `total_amount`.
+- `due_date` optional, strictly `YYYY-MM-DD` → otherwise `400`.
+- `master_id` optional; must reference a real user → otherwise `400`.
+- An opening `paid_amount > 0` also creates a payment row
+  (`Boshlang'ich to'lov`) and an audit `created` entry.
+
+**PATCH `/:id`**
+
+- Editable: `item_name`, `description`, `supplier`, `phone`, `category`,
+  `quantity`, `unit`, `unit_price`, `total_amount`, `due_date`, `master_id`,
+  `currency`.
+- **Not editable:** `paid_amount` (only payments/mark-paid move it).
+- `currency` may only be corrected while `paid_amount == 0`; changing it once
+  money has moved → `409 To'lov qilingan hisobning valyutasini o'zgartirish mumkin emas`.
+- Lowering `total_amount` below `paid_amount` →
+  `400 Umumiy summani kamaytirish mumkin emas: to'langan summa yangi summadan katta bo'lib ketadi`.
+- Archived row → `409 Arxivdagi hisobni tahrirlash mumkin emas`; missing → `404 Hisob topilmadi`.
+
+**POST `/:id/payments`**
+
+```json
+{ "amount": 80000, "note": "Naqd", "currency": "UZS" }
+```
+
+- `amount` positive amount in the bill's currency (§4.3), ≤ `remaining_amount` →
+  otherwise `400 To'lov qoldiq summadan (100000 so'm) katta bo'lishi mumkin emas`.
+- Optional `currency` must match the bill's currency, else
+  `400 To'lov valyutasi hisob valyutasiga mos kelishi kerak`.
+- Row lock (`FOR UPDATE`) serialises concurrent payments.
+
+**POST `/:id/payments/:paymentId/void`** — body `{"reason": "…"}` (required). The
+row is **stamped** (`voided_at`, `voided_by`, `void_reason`), never deleted, and
+`paid_amount` is recomputed from the remaining live payments. Already voided →
+`409 Bu to'lov allaqachon bekor qilingan`.
+
+**POST `/:id/mark-paid`** — inserts a payment for the outstanding remainder so
+`SUM(live payments)` always equals `paid_amount`. Archived → `409`.
+
+### 17.4 Archiving an expense
+
+Same guard chain and pass key as the debt ledger (§12.4):
+
+1. session (`super_admin`) → `401`
+2. rate limit (shared debt-delete budget) → `429` (+`Retry-After`)
+3. exists → `404 Hisob topilmadi`
+4. already archived → `409 Bu hisob allaqachon arxivlangan`
+5. fully settled → `409 Bu hisob hali to'liq to'lanmagan.`
+6. pass key → `403 Pass key noto'g'ri` (or `503` when unset)
+
+**Pass key** — supply as `X-Debt-Pass-Key: <secret>` (also accepted as `pass_key`
+in the body or `Authorization: Bearer <secret>`; prefer the header). The archive
+sets `deleted_at`; the row and its audit trail stay queryable via
+`filter=archive`.
+
+## 18. Full endpoint reference
 
 Legend: 🔓 public · 🔑 session · 👑 `super_admin` · 📝 permission (`content`/`services`/`media`)
 
@@ -1227,5 +1386,15 @@ Legend: 🔓 public · 🔑 session · 👑 `super_admin` · 📝 permission (`c
 | 68 | GET | `/api/admin/inventory/movements` | 👑 | Movement history |
 | 69 | GET | `/api/admin/inventory/export.csv` | 👑 | Product CSV |
 | 70 | GET | `/api/admin/inventory/movements/export.csv` | 👑 | Movement CSV |
+| 71 | GET | `/api/admin/expenses` | 👑 | Expense list |
+| 72 | POST | `/api/admin/expenses` | 👑 | Create an expense |
+| 73 | GET | `/api/admin/expenses/stats` | 👑 | Per-currency expense stats |
+| 74 | GET | `/api/admin/expenses/export.csv` | 👑 | Expense CSV export |
+| 75 | GET | `/api/admin/expenses/:id` | 👑 | Expense detail |
+| 76 | PATCH | `/api/admin/expenses/:id` | 👑 | Edit an expense |
+| 77 | POST | `/api/admin/expenses/:id/payments` | 👑 | Add a payment |
+| 78 | POST | `/api/admin/expenses/:id/payments/:paymentId/void` | 👑 | Void a payment |
+| 79 | POST | `/api/admin/expenses/:id/mark-paid` | 👑 | Settle fully |
+| 80 | DELETE | `/api/admin/expenses/:id` | 👑+pass key | Archive an expense |
 
 Any other `/api/*` path → `404 { "error": "API route not found" }`.

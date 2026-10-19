@@ -4624,6 +4624,232 @@ async function readinessTests() {
     'P22.18 and none of them falls through to the "API route not found" catch-all',
     JSON.stringify(p22Unreachable));
 
+  // =========================================================================
+  // P23. The Moy hisob-kitob ledger and the currency model
+  // =========================================================================
+  // Expenses are what the workshop owes its suppliers: a bill may be settled in
+  // full, in part, or over several payments, and every figure carries its own
+  // currency. These tests walk a bill through its whole life and prove the money
+  // never adds a so'm to a dollar anywhere along the way.
+  const p23 = newClient();
+  r = await p23.post('/api/auth/login', { username: 'superadmin1', password: 'password123' });
+  check(r.status === 200, 'P23.0 the super admin signs in for the expense tests', `status=${r.status}`);
+  const p23m = newClient();
+  r = await p23m.post('/api/auth/login', { username: 'usta1', password: 'password123' });
+  check(r.status === 200, 'P23.0 and a master signs in too', `status=${r.status}`);
+  const p23anon = newClient();
+  const p23db = p22db;
+  const p23Tag = Date.now();
+  const p23Name = (s) => `P23 ${s} ${p23Tag}`;
+  const p23Service = ((await p23.get('/api/admin/worklogs/services')).data.services || [])[0];
+  check(!!p23Service && !!p23Service.name, 'P23.0 a live service is available for the debt and work-log rows', JSON.stringify(p23Service));
+
+  group('P23.1 A bill is created and its total derived from quantity x unit price');
+  r = await p23.post('/api/admin/expenses', {
+    item_name: p23Name('moy'), category: 'oil', quantity: 4, unit: 'litr',
+    unit_price: 45000, supplier: p23Name('postavshik'), phone: '+998901112233',
+  });
+  const e1 = r.data && r.data.expense;
+  check(r.status === 201 && !!e1, 'P23.1 the bill is created', `status=${r.status} ${JSON.stringify(r.data)}`);
+  check(!!e1 && e1.currency === 'UZS', "P23.1 it defaults to so'm", JSON.stringify(e1 && e1.currency));
+  check(!!e1 && Number(e1.total_amount) === 180000, 'P23.1 the total is quantity x unit price', JSON.stringify(e1 && e1.total_amount));
+  check(!!e1 && e1.status === 'unpaid' && Number(e1.remaining_amount) === 180000, 'P23.1 nothing paid yet leaves the whole amount owing', JSON.stringify(e1 && [e1.status, e1.remaining_amount]));
+  check(!!e1 && e1.status_label === "To'lanmagan" && e1.category_label === 'Moy' && e1.money_symbol === "so'm", 'P23.1 the labels ride along', JSON.stringify(e1 && [e1.status_label, e1.category_label, e1.money_symbol]));
+  try {
+    const row = await p23db.query('SELECT total_amount, currency, remaining_amount FROM expenses WHERE id = $1', [e1.id]);
+    check(row.rows.length === 1 && row.rows[0].currency === 'UZS' && Number(row.rows[0].remaining_amount) === 180000,
+      'P23.1 it lands in PostgreSQL with a generated remainder', JSON.stringify(row.rows));
+  } catch (e) { check(false, 'P23.1 the row can be read straight from the driver', String(e && e.message)); }
+
+  group('P23.2 A part payment moves the status and the remainder, and keeps a payment row');
+  r = await p23.post(`/api/admin/expenses/${e1.id}/payments`, { amount: 80000, note: 'naqd' });
+  const e1b = r.data && r.data.expense;
+  check(r.status === 201 && !!e1b, 'P23.2 the payment is accepted', `status=${r.status} ${JSON.stringify(r.data)}`);
+  check(!!e1b && Number(e1b.paid_amount) === 80000 && Number(e1b.remaining_amount) === 100000, 'P23.2 paid and remaining reconcile', JSON.stringify(e1b && [e1b.paid_amount, e1b.remaining_amount]));
+  check(!!e1b && e1b.status === 'partially_paid', 'P23.2 and the status follows the amounts', JSON.stringify(e1b && e1b.status));
+  r = await p23.get(`/api/admin/expenses/${e1.id}`);
+  const e1Pays = (r.data && r.data.payments) || [];
+  check(r.status === 200 && e1Pays.length === 1 && Number(e1Pays[0].amount) === 80000 && !e1Pays[0].voided_at, 'P23.2 the payment is on the ledger', JSON.stringify(e1Pays));
+
+  group('P23.3 A payment past the remainder is refused, so paid never exceeds the total');
+  r = await p23.post(`/api/admin/expenses/${e1.id}/payments`, { amount: 100001 });
+  check(r.status === 400, "P23.3 overpaying by one so'm is a readable 400", `status=${r.status} ${JSON.stringify(r.data)}`);
+  r = await p23.get(`/api/admin/expenses/${e1.id}`);
+  check(Number(r.data.expense.paid_amount) === 80000, 'P23.3 and the refused payment did not move the balance', JSON.stringify(r.data.expense && r.data.expense.paid_amount));
+
+  group('P23.4 Mark-paid settles the remainder and records it as a payment');
+  r = await p23.post(`/api/admin/expenses/${e1.id}/mark-paid`);
+  const e1c = r.data && r.data.expense;
+  check(r.status === 200 && !!e1c && e1c.status === 'paid' && Number(e1c.remaining_amount) === 0, 'P23.4 the bill is fully settled', JSON.stringify(e1c && [e1c.status, e1c.remaining_amount]));
+  r = await p23.get(`/api/admin/expenses/${e1.id}`);
+  const p23LiveSum = (((r.data && r.data.payments) || []).filter((p) => !p.voided_at)).reduce((s, p) => s + Number(p.amount), 0);
+  check(p23LiveSum === Number(r.data.expense.paid_amount), 'P23.4 the live payments always reconcile with paid_amount', JSON.stringify({ liveSum: p23LiveSum, paid: r.data.expense.paid_amount }));
+
+  group('P23.5 Voiding a payment recomputes the amount rather than deleting anything');
+  const p23FirstPay = (r.data.payments || []).find((p) => Number(p.amount) === 80000);
+  r = await p23.post(`/api/admin/expenses/${e1.id}/payments/${p23FirstPay.id}/void`, { reason: 'P23 xato kiritildi' });
+  const e1d = r.data && r.data.expense;
+  check(r.status === 200 && !!e1d && Number(e1d.paid_amount) === 100000 && e1d.status === 'partially_paid', 'P23.5 the voided amount leaves the total', JSON.stringify(e1d && [e1d.paid_amount, e1d.status]));
+  r = await p23.get(`/api/admin/expenses/${e1.id}`);
+  const p23Voided = (r.data.payments || []).find((p) => p.id === p23FirstPay.id);
+  check(!!p23Voided && !!p23Voided.voided_at && !!p23Voided.void_reason, 'P23.5 the row is stamped, not removed', JSON.stringify(p23Voided));
+
+  group("P23.6 A fractional so'm is refused but a fractional dollar is kept");
+  r = await p23.post('/api/admin/expenses', { item_name: p23Name('kasr'), category: 'other', total_amount: 1500.75 });
+  check(r.status === 400, "P23.6 a so'm amount with qopiks is refused", `status=${r.status} ${JSON.stringify(r.data)}`);
+  r = await p23.post('/api/admin/expenses', { item_name: p23Name('dollar'), category: 'other', currency: 'USD', total_amount: '1500.75' });
+  const eUsd = r.data && r.data.expense;
+  check(r.status === 201 && !!eUsd && eUsd.currency === 'USD' && Number(eUsd.total_amount) === 1500.75, 'P23.6 a USD amount keeps its cents', JSON.stringify(eUsd && [eUsd.currency, eUsd.total_amount]));
+  check(!!eUsd && eUsd.money_symbol === '$', 'P23.6 and carries the dollar sign', JSON.stringify(eUsd && eUsd.money_symbol));
+
+  group("P23.7 A payment must be in the bill's own currency");
+  r = await p23.post(`/api/admin/expenses/${eUsd.id}/payments`, { amount: 10, currency: 'UZS' });
+  check(r.status === 400, "P23.7 paying a dollar bill in so'm is refused", `status=${r.status} ${JSON.stringify(r.data)}`);
+  r = await p23.post(`/api/admin/expenses/${eUsd.id}/payments`, { amount: '100.50', currency: 'USD' });
+  check(r.status === 201 && Number(r.data.expense.paid_amount) === 100.5, 'P23.7 a matching cent payment is accepted', `status=${r.status} ${JSON.stringify(r.data)}`);
+
+  group("P23.8 A bill's currency is fixed once money has moved");
+  r = await p23.patch(`/api/admin/expenses/${eUsd.id}`, { currency: 'UZS' });
+  check(r.status === 409, "P23.8 re-labelling a paid bill as so'm is refused", `status=${r.status} ${JSON.stringify(r.data)}`);
+  r = await p23.post('/api/admin/expenses', { item_name: p23Name('tuzat'), category: 'other', currency: 'USD', total_amount: '20' });
+  const eFix = r.data && r.data.expense;
+  r = await p23.patch(`/api/admin/expenses/${eFix.id}`, { currency: 'UZS', total_amount: '20000' });
+  check(r.status === 200 && r.data.expense.currency === 'UZS' && Number(r.data.expense.total_amount) === 20000, 'P23.8 but an untouched bill may still be corrected', `status=${r.status} ${JSON.stringify(r.data)}`);
+
+  group('P23.9 Statistics are split per currency and never summed across them');
+  r = await p23.get('/api/admin/expenses/stats');
+  const p23Stats = r.data && r.data.stats;
+  check(r.status === 200 && !!p23Stats && Array.isArray(p23Stats.currencies) && p23Stats.currencies.length === 2, 'P23.9 both currencies are always reported', JSON.stringify(p23Stats && p23Stats.currencies));
+  const p23Uzs = (p23Stats.currencies || []).find((c) => c.currency === 'UZS') || {};
+  const p23Usd = (p23Stats.currencies || []).find((c) => c.currency === 'USD') || {};
+  check(typeof p23Uzs.totalAmount === 'number' && p23Uzs.totalAmount >= 180000, "P23.9 the so'm bucket sums only so'm bills", JSON.stringify(p23Uzs));
+  check(typeof p23Usd.totalAmount === 'number' && p23Usd.totalAmount >= 1500.75 && p23Usd.totalAmount < 100000, 'P23.9 the dollar bucket stays in dollars', JSON.stringify(p23Usd));
+  check(p23Uzs.totalAmount === p23Uzs.totalPaid + p23Uzs.totalRemaining, 'P23.9 and every bucket still balances', JSON.stringify(p23Uzs));
+  check(Number(p23Stats.total) >= 3, 'P23.9 the currency-agnostic count sees every live bill', JSON.stringify(p23Stats));
+
+  group('P23.10 The list filters by currency, category and status');
+  r = await p23.get('/api/admin/expenses?currency=USD&per_page=100');
+  const p23UsdList = (r.data && r.data.expenses) || [];
+  check(r.status === 200 && p23UsdList.length >= 1 && p23UsdList.every((e) => e.currency === 'USD'), 'P23.10 a currency filter returns only that currency', JSON.stringify(p23UsdList.map((e) => e.currency)));
+  r = await p23.get('/api/admin/expenses?category=oil&per_page=100');
+  check(r.status === 200 && r.data.expenses.every((e) => e.category === 'oil'), 'P23.10 a category filter is honoured', JSON.stringify(r.data.expenses.map((e) => e.category)));
+  r = await p23.get('/api/admin/expenses?filter=paid&per_page=100');
+  check(r.status === 200 && r.data.expenses.every((e) => e.status === 'paid'), 'P23.10 a status filter is honoured', JSON.stringify(r.data.expenses.map((e) => e.status)));
+
+  group('P23.11 The ledger is super-admin only');
+  r = await p23anon.get('/api/admin/expenses');
+  check(r.status === 401, 'P23.11 an anonymous caller is refused', `status=${r.status}`);
+  r = await p23anon.get('/api/admin/expenses/stats');
+  check(r.status === 401, 'P23.11 and cannot read the statistics either', `status=${r.status}`);
+  r = await p23m.get('/api/admin/expenses');
+  check(r.status === 403, 'P23.11 a master is forbidden', `status=${r.status}`);
+  r = await p23m.post('/api/admin/expenses', { item_name: 'x', category: 'other', total_amount: 1 });
+  check(r.status === 403, 'P23.11 and cannot create a bill', `status=${r.status}`);
+
+  group('P23.12 The CSV export carries the currency column');
+  r = await p23.get('/api/admin/expenses/export.csv?per_page=100');
+  const p23Csv = r.buf ? r.buf.toString('utf8') : '';
+  check(r.status === 200 && r.type.includes('text/csv'), 'P23.12 the export is a CSV', `status=${r.status} ${r.type}`);
+  check(p23Csv.includes('Valyuta'), 'P23.12 the header names the currency column', p23Csv.slice(0, 160));
+  check(p23Csv.includes('USD'), 'P23.12 a dollar row is labelled as such', p23Csv.slice(0, 400));
+  check(/moy-hisob-kitob-\d{4}-\d{2}-\d{2}\.csv/.test(String(r.headers.get('content-disposition') || '')), 'P23.12 and it is attached as a dated file', String(r.headers.get('content-disposition') || ''));
+
+  group('P23.13 Every action on a bill is audited');
+  r = await p23.get(`/api/admin/expenses/${e1.id}`);
+  const p23Actions = ((r.data && r.data.audit_logs) || []).map((a) => a.action);
+  check(p23Actions.includes('created'), 'P23.13 the creation is on record', JSON.stringify(p23Actions));
+  check(p23Actions.includes('payment_added'), 'P23.13 so is the payment', JSON.stringify(p23Actions));
+  check(p23Actions.includes('payment_voided'), 'P23.13 and the void', JSON.stringify(p23Actions));
+
+  group('P23.14 The obvious mistakes are readable 400s');
+  r = await p23.post('/api/admin/expenses', { item_name: p23Name('summasiz'), category: 'other' });
+  check(r.status === 400, 'P23.14 a bill with no amount at all is refused', `status=${r.status}`);
+  r = await p23.post('/api/admin/expenses', { item_name: p23Name('bulim'), category: 'nope', total_amount: 1000 });
+  check(r.status === 400, 'P23.14 an unknown category is refused', `status=${r.status}`);
+  r = await p23.post('/api/admin/expenses', { item_name: p23Name('sana'), category: 'other', total_amount: 1000, due_date: '31-12-2026' });
+  check(r.status === 400, 'P23.14 a non-ISO due date is refused', `status=${r.status}`);
+  r = await p23.post('/api/admin/expenses', { item_name: '   ', category: 'other', total_amount: 1000 });
+  check(r.status === 400, 'P23.14 a blank name is refused', `status=${r.status}`);
+  r = await p23.get('/api/admin/expenses/999999');
+  check(r.status === 404, 'P23.14 reading a missing bill 404s', `status=${r.status}`);
+
+  group('P23.15 The debt ledger speaks the same currency');
+  r = await p23.post('/api/admin/debts', { full_name: p23Name('qarzdor'), phone: '+998901112233', service: p23Service.name, debt_amount: '250.50', currency: 'USD' });
+  const p23Debt = r.data && r.data.debt;
+  check(r.status === 201 && !!p23Debt && p23Debt.currency === 'USD' && Number(p23Debt.debt_amount) === 250.5, 'P23.15 a USD debt keeps its cents', `status=${r.status} ${JSON.stringify(r.data)}`);
+  r = await p23.post('/api/admin/debts', { full_name: p23Name('kasr'), phone: '+998901112233', service: p23Service.name, debt_amount: '1500.75' });
+  check(r.status === 400, "P23.15 a fractional so'm debt is refused", `status=${r.status} ${JSON.stringify(r.data)}`);
+  r = await p23.post(`/api/admin/debts/${p23Debt.id}/payments`, { amount: '50.25', currency: 'USD' });
+  check(r.status === 201 && Number(r.data.debt.paid_amount) === 50.25, 'P23.15 a matching dollar payment is accepted', `status=${r.status} ${JSON.stringify(r.data)}`);
+  r = await p23.post(`/api/admin/debts/${p23Debt.id}/payments`, { amount: '10', currency: 'UZS' });
+  check(r.status === 400, "P23.15 but a so'm payment into a dollar debt is refused", `status=${r.status} ${JSON.stringify(r.data)}`);
+
+  group('P23.16 The work log keeps its currency alongside its price');
+  r = await p23.post('/api/admin/worklogs', {
+    master_id: masterRow.id, title: p23Name('ish'), service_type: p23Service.name,
+    status: 'Jarayonda', price: '75.50', currency: 'USD',
+  });
+  const p23Work = r.data && r.data.work;
+  check(r.status === 201 && !!p23Work && p23Work.currency === 'USD', 'P23.16 a USD work log round-trips', `status=${r.status} ${JSON.stringify(r.data)}`);
+  check(!!p23Work && Number(p23Work.price) === 75.5, 'P23.16 and its price keeps its cents', JSON.stringify(p23Work && p23Work.price));
+  r = await p23.post('/api/admin/worklogs', {
+    master_id: masterRow.id, title: p23Name('bad'), service_type: p23Service.name,
+    status: 'Jarayonda', price: 1000, currency: 'EUR',
+  });
+  check(r.status === 400, 'P23.16 an unknown currency is refused', `status=${r.status} ${JSON.stringify(r.data)}`);
+
+  group("P23.17 The warehouse records a product's currency without losing precision");
+  r = await p23.post('/api/admin/inventory/products', {
+    name: p23Name('moy'), type: 'oil', brand: 'P23', viscosity: '5W-30',
+    cost_price: '185000.50', markup_amount: '9999.99', currency: 'USD',
+  });
+  const p23Prod = r.data && r.data.product;
+  check(r.status === 201 && !!p23Prod && p23Prod.currency === 'USD', 'P23.17 a USD product round-trips', `status=${r.status} ${JSON.stringify(r.data)}`);
+  check(!!p23Prod && Number(p23Prod.cost_price) === 185000.5 && Number(p23Prod.markup_amount) === 9999.99, 'P23.17 with both two-decimal figures intact', JSON.stringify(p23Prod && [p23Prod.cost_price, p23Prod.markup_amount]));
+  r = await p23.post('/api/admin/inventory/products', { name: p23Name('bad'), type: 'oil', viscosity: '5W-30', currency: 'EUR' });
+  check(r.status === 400, 'P23.17 an unknown currency is refused', `status=${r.status} ${JSON.stringify(r.data)}`);
+
+  group('P23.18 Archiving needs a settled bill and the shared pass key');
+  // P16.14 deliberately exhausts the delete budget on the main server, so the
+  // archive path is exercised on a fresh instance with its own limiter state.
+  // Both servers share one database, so the bill under test is a real one.
+  const p23ArchPort = PORT + 21;
+  const p23ArchBase = `http://127.0.0.1:${p23ArchPort}`;
+  const p23ArchChild = spawn(process.execPath, [ENTRY], { env: serverEnv({ PORT: String(p23ArchPort) }), stdio: ['ignore', 'pipe', 'pipe'] });
+  extraChildren.push(p23ArchChild);
+  const p23ArchLogs = [];
+  p23ArchChild.stdout.on('data', (d) => p23ArchLogs.push(d.toString()));
+  p23ArchChild.stderr.on('data', (d) => p23ArchLogs.push(d.toString()));
+  let p23ArchReady = false;
+  for (let i = 0; i < 150 && !p23ArchReady; i++) {
+    try { p23ArchReady = (await fetch(p23ArchBase + '/api/health')).ok; } catch { p23ArchReady = false; }
+    if (!p23ArchReady) await new Promise((r2) => setTimeout(r2, 200));
+  }
+  check(p23ArchReady, 'P23.18 a fresh instance boots to exercise the archive path', p23ArchLogs.join('').slice(-300));
+  if (p23ArchReady) {
+    const ac = newClient(p23ArchBase);
+    let ar = await ac.post('/api/auth/login', { username: 'superadmin1', password: 'password123' });
+    check(ar.status === 200, 'P23.18 the super admin signs in there', `status=${ar.status}`);
+    ar = await ac.post('/api/admin/expenses', { item_name: `P23 archive ${p23Tag}`, category: 'other', total_amount: 50000 });
+    const arc = ar.data && ar.data.expense;
+    ar = await ac.delWithKey(`/api/admin/expenses/${arc.id}`, DEBT_PASS_KEY);
+    check(ar.status === 409, 'P23.18 a bill still owing cannot be archived', `status=${ar.status} ${JSON.stringify(ar.data)}`);
+    await ac.post(`/api/admin/expenses/${arc.id}/mark-paid`);
+    ar = await ac.delWithKey(`/api/admin/expenses/${arc.id}`, WRONG_DEBT_KEY);
+    check(ar.status === 403, 'P23.18 a wrong pass key is refused', `status=${ar.status} ${JSON.stringify(ar.data)}`);
+    ar = await ac.delWithKey(`/api/admin/expenses/${arc.id}`, DEBT_PASS_KEY);
+    check(ar.status === 200 && ar.data.ok === true, 'P23.18 the right key archives it', `status=${ar.status} ${JSON.stringify(ar.data)}`);
+    ar = await ac.get(`/api/admin/expenses/${arc.id}`);
+    check(ar.status === 200 && !!ar.data.expense.deleted_at, 'P23.18 the row is stamped, not deleted', JSON.stringify(ar.data.expense && ar.data.expense.deleted_at));
+    ar = await ac.patch(`/api/admin/expenses/${arc.id}`, { item_name: 'x' });
+    check(ar.status === 409, 'P23.18 an archived bill cannot be edited', `status=${ar.status}`);
+    ar = await ac.get('/api/admin/expenses?filter=archive&per_page=100');
+    check(ar.status === 200 && (ar.data.expenses || []).some((e) => e.id === arc.id), 'P23.18 and it shows under the archive filter', JSON.stringify((ar.data.expenses || []).map((e) => e.id).slice(0, 5)));
+    ar = await ac.get('/api/admin/expenses?per_page=100');
+    check(ar.status === 200 && !(ar.data.expenses || []).some((e) => e.id === arc.id), 'P23.18 while the live ledger hides it', JSON.stringify((ar.data.expenses || []).map((e) => e.id).slice(0, 5)));
+  }
+  p23ArchChild.kill('SIGTERM');
+
   await p22db.end();
 }
 

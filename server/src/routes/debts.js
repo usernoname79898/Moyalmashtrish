@@ -4,6 +4,13 @@ const { db } = require('../db');
 const auth = require('../auth');
 const rateLimit = require('../rateLimit');
 const { buildDebtWorkbook } = require('../debtExcel');
+const {
+  CURRENCIES,
+  normalizeCurrency,
+  isCurrency,
+  parseMoney,
+  parseMoneyOrZero,
+} = require('../currency');
 
 const router = require('../asyncRoute').wrapRouter(express.Router());
 
@@ -16,24 +23,10 @@ router.use(auth.authenticate);
 // Money helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Parses a so'm amount from JSON.
- *
- * Only plain integers are accepted. `parseFloat('12abc')` returns 12 and
- * `parseFloat('1e9')` returns 1000000000, both of which would silently record a
- * wrong figure on a financial ledger, so the raw value is matched first.
- */
-function parseAmount(value, field) {
-  const raw = typeof value === 'number' ? String(value) : String(value == null ? '' : value).trim();
-  if (!/^\d+$/.test(raw)) {
-    throw badRequest(`${field} butun son raqam bo'lishi kerak (manfiy va kasr sonlar qabul qilinmaydi)`);
-  }
-  const n = Number(raw);
-  if (!Number.isSafeInteger(n)) {
-    throw badRequest(`${field} noto'g'ri`);
-  }
-  return n;
-}
+// Amount parsing lives in ../currency so the ledger, the warehouse and the
+// expenses ledger cannot drift apart: UZS is whole so'm, USD keeps its cents.
+// `parseAmount` used to be an integer-only parser here; the currency-aware
+// version is imported below and used with the debt's own currency.
 
 function badRequest(message) {
   const err = new Error(message);
@@ -126,6 +119,14 @@ function listQuery(req) {
   }
   if (filter) where.push(filter);
 
+  // Currency is an optional filter; an unsupported code is refused rather than
+  // silently ignored, so a typo cannot quietly widen the view.
+  if (req.query.currency !== undefined && req.query.currency !== '') {
+    if (!isCurrency(req.query.currency)) throw badRequest("Valyuta noto'g'ri: faqat UZS yoki USD");
+    where.push('d.currency = ?');
+    params.push(normalizeCurrency(req.query.currency));
+  }
+
   return { where: where.join(' AND '), params, page, perPage, orderBy, archived, filterKey };
 }
 
@@ -180,6 +181,7 @@ function snapshot(d) {
     debt_amount: Number(d.debt_amount),
     paid_amount: Number(d.paid_amount),
     remaining_amount: Number(d.remaining_amount),
+    currency: d.currency,
     status: d.status,
   };
 }
@@ -193,7 +195,7 @@ function snapshot(d) {
  * export. Dropping it here rather than from each query is what makes that
  * guarantee hold for every caller at once.
  */
-const DEBT_FIELDS = 'id, full_name, phone, service, description, debt_amount, paid_amount, remaining_amount, status, created_at, updated_at, deleted_at';
+const DEBT_FIELDS = 'id, full_name, phone, service, description, debt_amount, paid_amount, remaining_amount, currency, status, created_at, updated_at, deleted_at';
 
 // ---------------------------------------------------------------------------
 // DELETE pass key
@@ -283,7 +285,7 @@ router.get('/export.csv', async (req, res) => {
     .prepare(`SELECT ${DEBT_FIELDS} FROM debts d WHERE ${where} ORDER BY d.created_at DESC, d.id DESC`)
     .all(...params);
 
-  const header = ['Ism', 'Telefon', 'Xizmat', 'Qarz', 'To\'langan', 'Qolgan', 'Holat', 'Sana'];
+  const header = ['Ism', 'Telefon', 'Xizmat', 'Qarz', 'To\'langan', 'Qolgan', 'Valyuta', 'Holat', 'Sana'];
   const body = rows.map((d) => [
     d.full_name,
     d.phone,
@@ -291,6 +293,7 @@ router.get('/export.csv', async (req, res) => {
     d.debt_amount,
     d.paid_amount,
     d.remaining_amount,
+    d.currency,
     STATUS_UZ[d.status] || d.status,
     d.created_at,
   ]);
@@ -337,7 +340,7 @@ router.get('/export.xlsx', async (req, res) => {
   // sheet is readable without the reader cross-referencing sheet one.
   const payments = await db
     .prepare(
-      `SELECT p.id, p.debt_id, p.amount, p.note, p.created_at, p.created_by,
+      `SELECT p.id, p.debt_id, p.amount, p.currency, p.note, p.created_at, p.created_by,
               d.full_name, d.phone, u.full_name AS created_by_name
          FROM debt_payments p
          JOIN debts d ON d.id = p.debt_id
@@ -362,25 +365,32 @@ router.get('/export.xlsx', async (req, res) => {
     .all(...params);
 
   // The summary must describe the file, not the ledger, so it aggregates over the
-  // same WHERE rather than reading the totals endpoint.
+  // same WHERE rather than reading the totals endpoint. Grouped by currency so a
+  // USD amount is never added to a UZS one.
   const totals = await db
     .prepare(
-      `SELECT COALESCE(SUM(debt_amount), 0)                   AS total_debt,
+      `SELECT d.currency,
+              COALESCE(SUM(debt_amount), 0)                   AS total_debt,
               COALESCE(SUM(paid_amount), 0)                   AS total_paid,
               COALESCE(SUM(GREATEST(remaining_amount, 0)), 0) AS total_remaining,
-              COUNT(*)                                       AS total_count
-         FROM debts d WHERE ${where}`
+              COUNT(*)                                        AS total_count
+         FROM debts d WHERE ${where}
+         GROUP BY d.currency`
     )
-    .get(...params);
+    .all(...params);
 
   const { buffer, counts } = await buildDebtWorkbook({
     debts: debts.map((d) => ({ ...d, status_label: STATUS_UZ[d.status] || d.status })),
     payments,
     auditLogs,
     totals: {
-      total_debt: Number(totals.total_debt),
-      total_paid: Number(totals.total_paid),
-      total_remaining: Number(totals.total_remaining),
+      total_count: totals.reduce((a, t) => a + Number(t.total_count), 0),
+      byCurrency: totals.map((t) => ({
+        currency: t.currency,
+        total_debt: Number(t.total_debt),
+        total_paid: Number(t.total_paid),
+        total_remaining: Number(t.total_remaining),
+      })),
     },
   });
 
@@ -420,13 +430,10 @@ function csvCell(value) {
 }
 
 router.get('/stats', async (req, res) => {
-  const row = await db
+  const counts = await db
     .prepare(
       `SELECT
          COUNT(*)                                                   AS total_debtors,
-         COALESCE(SUM(debt_amount), 0)                              AS total_debt,
-         COALESCE(SUM(GREATEST(remaining_amount, 0)), 0)            AS total_remaining,
-         COALESCE(SUM(paid_amount), 0)                              AS total_paid,
          COUNT(*) FILTER (WHERE remaining_amount > 0)                AS open_debtors,
          COUNT(*) FILTER (WHERE status = 'partially_paid')           AS partial_debtors,
          COUNT(*) FILTER (WHERE status = 'paid')                     AS paid_debtors,
@@ -436,18 +443,48 @@ router.get('/stats', async (req, res) => {
     )
     .get();
 
+  // Money is grouped by currency; the scalar totals below stay so'm-only (the
+  // only currency the ledger held before this feature), so they remain
+  // comparable with the dashboard. Callers that need every currency read
+  // `currencies`, where a USD figure is never mixed into a UZS one.
+  const money = await db
+    .prepare(
+      `SELECT currency,
+              COUNT(*)::int                                     AS count,
+              COUNT(*) FILTER (WHERE remaining_amount > 0)::int AS open_count,
+              COALESCE(SUM(debt_amount), 0)                     AS total_debt,
+              COALESCE(SUM(paid_amount), 0)                     AS total_paid,
+              COALESCE(SUM(GREATEST(remaining_amount, 0)), 0)   AS total_remaining
+         FROM debts WHERE deleted_at IS NULL GROUP BY currency`
+    )
+    .all();
+  const moneyByCurrency = new Map(money.map((m) => [m.currency, m]));
+  const currencies = CURRENCIES.map((currency) => {
+    const m = moneyByCurrency.get(currency) || {};
+    return {
+      currency,
+      count: Number(m.count || 0),
+      openCount: Number(m.open_count || 0),
+      totalDebt: Number(m.total_debt || 0),
+      totalPaid: Number(m.total_paid || 0),
+      totalRemaining: Number(m.total_remaining || 0),
+    };
+  });
+  const uzs = moneyByCurrency.get('UZS') || {};
+
   res.json({
-    totalDebtors: Number(row.total_debtors),
-    totalDebt: Number(row.total_debt),
-    totalRemaining: Number(row.total_remaining),
-    totalPaid: Number(row.total_paid),
-    openDebtors: Number(row.open_debtors),
-    partialDebtors: Number(row.partial_debtors),
-    paidDebtors: Number(row.paid_debtors),
-    createdToday: Number(row.created_today),
+    totalDebtors: Number(counts.total_debtors),
+    totalDebt: Number(uzs.total_debt || 0),
+    totalRemaining: Number(uzs.total_remaining || 0),
+    totalPaid: Number(uzs.total_paid || 0),
+    openDebtors: Number(counts.open_debtors),
+    partialDebtors: Number(counts.partial_debtors),
+    paidDebtors: Number(counts.paid_debtors),
+    createdToday: Number(counts.created_today),
     archived: Number(
       (await db.prepare('SELECT COUNT(*) c FROM debts WHERE deleted_at IS NOT NULL').get()).c
     ),
+    currencies,
   });
 });
 
@@ -475,17 +512,20 @@ router.post('/', async (req, res) => {
   const service = text(body.service, 'Xizmat', { required: true, max: 300 });
   const description = text(body.description, 'Izoh', { max: 4000 });
 
+  // The currency is fixed for the life of the debt and governs how every amount
+  // on it is parsed: whole so'm for UZS, cents for USD. An absent value means
+  // UZS, so an older client that never sends one keeps working unchanged.
+  const currency = normalizeCurrency(body.currency);
+
   // `address` is accepted and discarded. The field was retired from the product,
   // but an older client or a bookmarked request may still send it; silently
   // ignoring it keeps that request working instead of turning it into a 400, and
   // ignoring it is what stops the value from being stored.
-  const debt_amount = parseAmount(body.debt_amount, 'Qarz');
+  const debt_amount = parseMoney(body.debt_amount, 'Qarz', currency);
   if (debt_amount <= 0) throw badRequest("Qarz summasi 0 dan katta bo'lishi kerak");
 
   // An opening payment is allowed but must be coherent with the debt itself.
-  const paid_amount = body.paid_amount === undefined || body.paid_amount === null || body.paid_amount === ''
-    ? 0
-    : parseAmount(body.paid_amount, "To'langan");
+  const paid_amount = parseMoneyOrZero(body.paid_amount, "To'langan", currency);
   if (paid_amount > debt_amount) throw badRequest("To'langan summa qarz summasidan katta bo'lishi mumkin emas");
 
   const status = statusFor(debt_amount, paid_amount);
@@ -496,17 +536,17 @@ router.post('/', async (req, res) => {
     // row may hold in it. Nothing that the operator typed ever reaches it.
     const created = await t
       .prepare(
-        `INSERT INTO debts (full_name, phone, address, service, description, debt_amount, paid_amount, status)
-         VALUES (?, ?, '', ?, ?, ?, ?, ?) RETURNING ${DEBT_FIELDS}`
+        `INSERT INTO debts (full_name, phone, address, service, description, debt_amount, paid_amount, currency, status)
+         VALUES (?, ?, '', ?, ?, ?, ?, ?, ?) RETURNING ${DEBT_FIELDS}`
       )
-      .one(full_name, phone, service, description, debt_amount, paid_amount, status);
+      .one(full_name, phone, service, description, debt_amount, paid_amount, currency, status);
 
     // An opening balance that is already paid is recorded in the payment ledger
     // too, so SUM(debt_payments) always reconciles with paid_amount.
     if (paid_amount > 0) {
       await t
-        .prepare('INSERT INTO debt_payments (debt_id, amount, note, created_by) VALUES (?, ?, ?, ?)')
-        .run(created.id, paid_amount, 'Boshlang\'ich to\'lov', req.user.id);
+        .prepare('INSERT INTO debt_payments (debt_id, amount, currency, note, created_by) VALUES (?, ?, ?, ?, ?)')
+        .run(created.id, paid_amount, currency, 'Boshlang\'ich to\'lov', req.user.id);
     }
     await audit(t, req, created.id, 'created', snapshot(created));
     return created;
@@ -523,7 +563,7 @@ router.get('/:id', async (req, res) => {
 
   const payments = await db
     .prepare(
-      'SELECT p.id, p.amount, p.note, p.created_at, p.created_by, u.full_name AS created_by_name FROM debt_payments p LEFT JOIN users u ON u.id = p.created_by WHERE p.debt_id = ? ORDER BY p.created_at DESC, p.id DESC'
+      'SELECT p.id, p.amount, p.currency, p.note, p.created_at, p.created_by, u.full_name AS created_by_name FROM debt_payments p LEFT JOIN users u ON u.id = p.created_by WHERE p.debt_id = ? ORDER BY p.created_at DESC, p.id DESC'
     )
     .all(debt.id);
   const auditLogs = await db
@@ -580,7 +620,15 @@ router.patch('/:id', async (req, res) => {
     // `address` in the body is ignored, for the same reason as on create. It is also
     // absent from the UPDATE below, so a value already stored on the row is left
     // untouched rather than blanked out.
-    const debt_amount = 'debt_amount' in body ? parseAmount(body.debt_amount, 'Qarz') : Number(current.debt_amount);
+    // The currency may only be corrected while nothing has been paid: once money
+    // has moved, switching it would silently relabel a UZS payment as USD.
+    const currency = 'currency' in body ? normalizeCurrency(body.currency, { required: true }) : current.currency;
+    if (currency !== current.currency && Number(current.paid_amount) > 0) {
+      const err = new Error("To'lov qilingan qarzning valyutasini o'zgartirish mumkin emas");
+      err.status = 409;
+      throw err;
+    }
+    const debt_amount = 'debt_amount' in body ? parseMoney(body.debt_amount, 'Qarz', currency) : Number(current.debt_amount);
     if (debt_amount <= 0) throw badRequest("Qarz summasi 0 dan katta bo'lishi kerak");
 
     // paid_amount is intentionally NOT editable here: it only ever moves through a
@@ -595,10 +643,10 @@ router.patch('/:id', async (req, res) => {
     const updated = await t
       .prepare(
         `UPDATE debts SET full_name = ?, phone = ?, service = ?, description = ?,
-                          debt_amount = ?, status = ?, updated_at = app_now()
+                          debt_amount = ?, currency = ?, status = ?, updated_at = app_now()
          WHERE id = ? RETURNING ${DEBT_FIELDS}`
       )
-      .one(full_name, phone, service, description, debt_amount, status, id);
+      .one(full_name, phone, service, description, debt_amount, currency, status, id);
     await audit(t, req, id, 'updated', { before: snapshot(current), after: snapshot(updated) });
     return updated;
   });
@@ -618,8 +666,6 @@ router.patch('/:id', async (req, res) => {
 router.post('/:id/payments', async (req, res) => {
   const id = Number(req.params.id);
   const body = req.body || {};
-  const amount = parseAmount(body.amount, "To'lov");
-  if (amount <= 0) throw badRequest("To'lov summasi 0 dan katta bo'lishi kerak");
   const note = text(body.note, 'Izoh', { max: 1000 });
 
   const debt = await db.transaction(async (t) => {
@@ -633,17 +679,26 @@ router.post('/:id/payments', async (req, res) => {
     }
     if (current.deleted_at) throw archivedOnly();
 
+    // A payment may only be made in the debt's own currency: the ledger never
+    // converts, so a USD payment against a so'm debt is refused outright.
+    if (body.currency !== undefined && body.currency !== null && body.currency !== '') {
+      const requested = normalizeCurrency(body.currency, { required: true });
+      if (requested !== current.currency) throw badRequest("To'lov valyutasi qarz valyutasiga mos kelishi kerak");
+    }
+    const amount = parseMoney(body.amount, "To'lov", current.currency);
+    if (amount <= 0) throw badRequest("To'lov summasi 0 dan katta bo'lishi kerak");
+
     const remaining = Number(current.remaining_amount);
     if (amount > remaining) {
-      throw badRequest(`To'lov qoldiq summadan (${remaining} so'm) katta bo'lishi mumkin emas`);
+      throw badRequest(`To'lov qoldiq summadan (${remaining} ${current.currency}) katta bo'lishi mumkin emas`);
     }
 
     const paid = Number(current.paid_amount) + amount;
     const status = statusFor(Number(current.debt_amount), paid);
 
     await t
-      .prepare('INSERT INTO debt_payments (debt_id, amount, note, created_by) VALUES (?, ?, ?, ?)')
-      .run(id, amount, note, req.user.id);
+      .prepare('INSERT INTO debt_payments (debt_id, amount, currency, note, created_by) VALUES (?, ?, ?, ?, ?)')
+      .run(id, amount, current.currency, note, req.user.id);
 
     const updated = await t
       .prepare("UPDATE debts SET paid_amount = ?, status = ?, updated_at = app_now() WHERE id = ? RETURNING " + DEBT_FIELDS)
@@ -651,6 +706,7 @@ router.post('/:id/payments', async (req, res) => {
 
     await audit(t, req, id, 'payment_added', {
       amount,
+      currency: current.currency,
       note,
       debt_amount: Number(updated.debt_amount),
       paid_amount: Number(updated.paid_amount),
@@ -684,8 +740,8 @@ router.post('/:id/mark-paid', async (req, res) => {
     const outstanding = Number(current.remaining_amount);
     if (outstanding > 0) {
       await t
-        .prepare('INSERT INTO debt_payments (debt_id, amount, note, created_by) VALUES (?, ?, ?, ?)')
-        .run(id, outstanding, 'Qarz to\'liq to\'langan deb belgilandi', req.user.id);
+        .prepare('INSERT INTO debt_payments (debt_id, amount, currency, note, created_by) VALUES (?, ?, ?, ?, ?)')
+        .run(id, outstanding, current.currency, 'Qarz to\'liq to\'langan deb belgilandi', req.user.id);
     }
     const updated = await t
       .prepare("UPDATE debts SET paid_amount = debt_amount, status = 'paid', updated_at = app_now() WHERE id = ? RETURNING " + DEBT_FIELDS)

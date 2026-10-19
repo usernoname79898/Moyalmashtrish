@@ -26,8 +26,11 @@ info:
 
     ## Money
 
-    Debt-ledger amounts are plain integer so'm. Inventory prices allow 2 decimals,
-    inventory quantities up to 3 decimals (filters must be whole numbers).
+    Every amount carries a `currency` (`UZS` by default, or `USD`); they are never
+    converted or summed together. UZS amounts are whole so'm (`^\d+$`), USD amounts
+    allow up to 2 decimals. A payment must match its parent's currency. Inventory
+    prices allow 2 decimals, inventory quantities up to 3 decimals (filters must be
+    whole numbers).
   version: 1.0.0
   contact:
     name: AvtoServis
@@ -53,6 +56,8 @@ tags:
     description: Oil and filter warehouse (super_admin only)
   - name: Debts
     description: Debt ledger (qarz daftari)
+  - name: Expenses
+    description: Supplier expense ledger (moy hisob-kitob, super_admin only)
 security:
   - bearerAuth: []
   - cookieAuth: []
@@ -1766,6 +1771,9 @@ paths:
         - name: sort
           in: query
           schema: { type: string, enum: [newest, oldest, largest, remaining], default: newest }
+        - name: currency
+          in: query
+          schema: { $ref: '#/components/schemas/Currency' }
         - name: q
           in: query
           description: Matches full name, phone, service
@@ -1793,9 +1801,10 @@ paths:
       tags: [Debts]
       summary: Create a debt
       description: |
-        `debt_amount` must be a positive integer. An opening `paid_amount` also
-        creates a payment row so the payment ledger always reconciles.
-        `address` in the body is accepted and discarded.
+        `debt_amount` must be positive and in the selected `currency` (UZS whole
+        so'm, USD up to 2 decimals). An opening `paid_amount` also creates a
+        payment row so the payment ledger always reconciles. `address` in the body
+        is accepted and discarded.
       requestBody:
         required: true
         content:
@@ -1808,8 +1817,9 @@ paths:
                 phone: { type: string, maxLength: 60 }
                 service: { type: string, maxLength: 300 }
                 description: { type: string, maxLength: 4000 }
-                debt_amount: { type: integer, minimum: 1 }
-                paid_amount: { type: integer, minimum: 0 }
+                debt_amount: { type: number, description: "Positive; UZS whole so'm, USD up to 2 decimals" }
+                paid_amount: { type: number, minimum: 0 }
+                currency: { $ref: '#/components/schemas/Currency' }
       responses:
         '201':
           description: Created
@@ -1895,8 +1905,9 @@ paths:
       tags: [Debts]
       summary: Edit a debt
       description: |
-        Editable: `full_name`, `phone`, `service`, `description`, `debt_amount`.
-        `paid_amount` is **not** editable here. A changed `service` must be an
+        Editable: `full_name`, `phone`, `service`, `description`, `debt_amount`,
+        `currency`. `paid_amount` is **not** editable here; `currency` may only be
+        corrected while nothing has been paid. A changed `service` must be an
         active catalogue service.
       parameters:
         - $ref: '#/components/parameters/PathId'
@@ -1911,7 +1922,8 @@ paths:
                 phone: { type: string, maxLength: 60 }
                 service: { type: string, maxLength: 300 }
                 description: { type: string, maxLength: 4000 }
-                debt_amount: { type: integer, minimum: 1 }
+                debt_amount: { type: number }
+                currency: { $ref: '#/components/schemas/Currency' }
       responses:
         '200':
           description: Updated
@@ -1981,7 +1993,8 @@ paths:
       tags: [Debts]
       summary: Record a payment
       description: |
-        `amount` must be a positive integer not exceeding the remaining balance.
+        `amount` must be positive, in the debt's currency, and not exceed the
+        remaining balance. An optional `currency` must match the debt's currency.
         The debt row is locked (`FOR UPDATE`) so concurrent payments serialise.
       parameters:
         - $ref: '#/components/parameters/PathId'
@@ -1993,8 +2006,9 @@ paths:
               type: object
               required: [amount]
               properties:
-                amount: { type: integer, minimum: 1 }
+                amount: { type: number }
                 note: { type: string, maxLength: 1000 }
+                currency: { $ref: '#/components/schemas/Currency' }
       responses:
         '201':
           description: Payment recorded — returns the updated debt
@@ -2089,6 +2103,386 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
         '503':
           description: No pass key configured on the server
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/expenses:
+    get:
+      tags: [Expenses]
+      summary: Expense list (super_admin only)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - name: filter
+          in: query
+          schema: { type: string, enum: [all, unpaid, partially_paid, paid, archive], default: all }
+        - name: status
+          in: query
+          description: Alias for `filter`
+          schema: { type: string, enum: [all, unpaid, partially_paid, paid, archive] }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [newest, oldest, largest, remaining], default: newest }
+        - name: currency
+          in: query
+          schema: { $ref: '#/components/schemas/Currency' }
+        - name: category
+          in: query
+          schema: { type: string, enum: [oil, filter, service, other] }
+        - name: master_id
+          in: query
+          schema: { type: integer }
+        - name: supplier
+          in: query
+          schema: { type: string }
+        - name: date_from
+          in: query
+          schema: { type: string }
+        - name: date_to
+          in: query
+          schema: { type: string }
+        - name: q
+          in: query
+          description: Matches item name, supplier, phone
+          schema: { type: string }
+        - name: search
+          in: query
+          description: Alias for `q`
+          schema: { type: string }
+      responses:
+        '200':
+          description: Expenses
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  expenses:
+                    type: array
+                    items: { $ref: '#/components/schemas/Expense' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+                  archived: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/DatabaseNotReady' }
+    post:
+      tags: [Expenses]
+      summary: Create an expense
+      description: |
+        `item_name` required. If `total_amount` is omitted it is derived as
+        `quantity × unit_price`. An opening `paid_amount` also creates a payment row.
+        Amount precision follows `currency` (see Currency).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [item_name]
+              properties:
+                item_name: { type: string, maxLength: 200 }
+                description: { type: string, maxLength: 4000 }
+                supplier: { type: string, maxLength: 200 }
+                phone: { type: string, maxLength: 60 }
+                category: { type: string, enum: [oil, filter, service, other] }
+                quantity: { type: number }
+                unit: { type: string, maxLength: 30 }
+                unit_price: { type: number }
+                total_amount: { type: number }
+                paid_amount: { type: number }
+                currency: { $ref: '#/components/schemas/Currency' }
+                due_date: { type: string, description: "YYYY-MM-DD" }
+                master_id: { type: integer, nullable: true }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  expense: { $ref: '#/components/schemas/Expense' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/DatabaseNotReady' }
+
+  /api/admin/expenses/stats:
+    get:
+      tags: [Expenses]
+      summary: Expense statistics (split per currency)
+      responses:
+        '200':
+          description: Statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stats: { $ref: '#/components/schemas/ExpenseStats' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/DatabaseNotReady' }
+
+  /api/admin/expenses/export.csv:
+    get:
+      tags: [Expenses]
+      summary: Export the current view as CSV
+      description: Includes a `Valyuta` column; so'm and dollar rows are never blended. Pagination is ignored.
+      parameters:
+        - name: filter
+          in: query
+          schema: { type: string, enum: [all, unpaid, partially_paid, paid, archive], default: all }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [newest, oldest, largest, remaining], default: newest }
+        - name: currency
+          in: query
+          schema: { $ref: '#/components/schemas/Currency' }
+        - name: category
+          in: query
+          schema: { type: string, enum: [oil, filter, service, other] }
+        - name: q
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: CSV attachment
+          content:
+            text/csv:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/DatabaseNotReady' }
+
+  /api/admin/expenses/{id}:
+    get:
+      tags: [Expenses]
+      summary: Expense detail with payments and audit trail
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  expense: { $ref: '#/components/schemas/Expense' }
+                  payments:
+                    type: array
+                    items: { $ref: '#/components/schemas/ExpensePayment' }
+                  audit_logs:
+                    type: array
+                    items: { $ref: '#/components/schemas/AuditLog' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Expense not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    patch:
+      tags: [Expenses]
+      summary: Edit an expense
+      description: |
+        `paid_amount` is not editable. A changed `currency` is refused once money
+        has moved (409). Lowering `total_amount` below `paid_amount` is a 400.
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                item_name: { type: string, maxLength: 200 }
+                description: { type: string, maxLength: 4000 }
+                supplier: { type: string, maxLength: 200 }
+                phone: { type: string, maxLength: 60 }
+                category: { type: string, enum: [oil, filter, service, other] }
+                quantity: { type: number }
+                unit: { type: string, maxLength: 30 }
+                unit_price: { type: number }
+                total_amount: { type: number }
+                currency: { $ref: '#/components/schemas/Currency' }
+                due_date: { type: string }
+                master_id: { type: integer, nullable: true }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  expense: { $ref: '#/components/schemas/Expense' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Expense not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Archived, or the currency is fixed because money has moved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [Expenses]
+      summary: Archive an expense (soft delete)
+      description: |
+        Requires the shared delete pass key. Refused unless the bill is fully
+        settled. Sets `deleted_at`; the row stays queryable via `filter=archive`.
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+        - $ref: '#/components/parameters/DebtPassKey'
+      responses:
+        '200':
+          description: Archived
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  expense: { $ref: '#/components/schemas/Expense' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Wrong pass key, or not a super admin
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Expense not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Unsettled, or already archived
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503':
+          description: No pass key configured on the server
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/expenses/{id}/payments:
+    post:
+      tags: [Expenses]
+      summary: Record a payment against an expense
+      description: The payment must be in the bill's own currency and at most the remaining amount.
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: number }
+                note: { type: string, maxLength: 1000 }
+                currency: { $ref: '#/components/schemas/Currency' }
+      responses:
+        '201':
+          description: Payment recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  expense: { $ref: '#/components/schemas/Expense' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Expense not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Archived
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/expenses/{id}/payments/{paymentId}/void:
+    post:
+      tags: [Expenses]
+      summary: Void a payment
+      description: Stamps the payment (never deletes it) and recomputes `paid_amount` from the remaining live payments.
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+        - name: paymentId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: Payment voided
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  expense: { $ref: '#/components/schemas/Expense' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Expense or payment not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Already voided, or the bill is archived
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/expenses/{id}/mark-paid:
+    post:
+      tags: [Expenses]
+      summary: Settle an expense in full
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Settled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  expense: { $ref: '#/components/schemas/Expense' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Expense not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Archived
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -2523,9 +2917,11 @@ components:
         phone: { type: string }
         service: { type: string }
         description: { type: string }
-        debt_amount: { type: integer, description: Integer so'm }
-        paid_amount: { type: integer }
-        remaining_amount: { type: integer, description: Generated column — never sent by clients }
+        debt_amount: { type: number, description: "Amount in `currency`; UZS is whole so'm, USD keeps 2 decimals (see Currency)" }
+        paid_amount: { type: number }
+        remaining_amount: { type: number, description: Generated column — never sent by clients }
+        currency: { $ref: '#/components/schemas/Currency' }
+        money_symbol: { type: string, description: Added on read, e.g. "so'm" or "$" }
         status: { type: string, enum: [unpaid, partially_paid, paid] }
         status_label: { type: string, enum: ["To'lanmagan", "Qisman to'langan", "To'langan"] }
         created_at: { type: string }
@@ -2536,11 +2932,25 @@ components:
       type: object
       properties:
         id: { type: integer }
-        amount: { type: integer }
+        amount: { type: number }
+        currency: { $ref: '#/components/schemas/Currency' }
         note: { type: string }
         created_at: { type: string }
         created_by: { type: integer, nullable: true }
         created_by_name: { type: string }
+        voided_at: { type: string, nullable: true }
+        voided_by: { type: integer, nullable: true }
+        void_reason: { type: string, nullable: true }
+
+    Currency:
+      type: string
+      enum: [UZS, USD]
+      default: UZS
+      description: |
+        Amount currency. Absent/empty defaults to `UZS`. Currencies are never
+        converted or summed together. UZS amounts are whole so'm (`^\d+$`);
+        USD amounts allow up to 2 decimals. A payment must match its parent's
+        currency.
 
     AuditLog:
       type: object
@@ -2558,11 +2968,88 @@ components:
       type: object
       properties:
         totalDebtors: { type: integer }
-        totalDebt: { type: integer }
-        totalRemaining: { type: integer }
-        totalPaid: { type: integer }
+        totalDebt: { type: number, description: UZS-only scalar (see `currencies`) }
+        totalRemaining: { type: number, description: UZS-only scalar }
+        totalPaid: { type: number, description: UZS-only scalar }
         openDebtors: { type: integer }
         partialDebtors: { type: integer }
         paidDebtors: { type: integer }
         createdToday: { type: integer }
         archived: { type: integer }
+        currencies:
+          type: array
+          description: Per-currency totals; never summed across codes. Always lists both UZS and USD, zero-filled.
+          items: { $ref: '#/components/schemas/CurrencyTotal' }
+
+    CurrencyTotal:
+      type: object
+      properties:
+        currency: { $ref: '#/components/schemas/Currency' }
+        count: { type: integer }
+        openCount: { type: integer }
+        totalDebt: { type: number }
+        totalPaid: { type: number }
+        totalRemaining: { type: number }
+
+    Expense:
+      type: object
+      properties:
+        id: { type: integer }
+        item_name: { type: string }
+        description: { type: string }
+        supplier: { type: string }
+        phone: { type: string }
+        category: { type: string, enum: [oil, filter, service, other] }
+        category_label: { type: string, enum: [Moy, Filtr, Xizmat, Boshqa] }
+        quantity: { type: number, description: Up to 3 decimals, strictly positive }
+        unit: { type: string }
+        unit_price: { type: number }
+        total_amount: { type: number, description: "Amount in `currency`; may be computed as quantity × unit_price" }
+        paid_amount: { type: number }
+        remaining_amount: { type: number, description: Generated column — never sent by clients }
+        currency: { $ref: '#/components/schemas/Currency' }
+        money_symbol: { type: string }
+        status: { type: string, enum: [unpaid, partially_paid, paid] }
+        status_label: { type: string, enum: ["To'lanmagan", "Qisman to'langan", "To'langan"] }
+        due_date: { type: string, description: "Empty or YYYY-MM-DD" }
+        master_id: { type: integer, nullable: true }
+        created_by: { type: integer, nullable: true }
+        created_at: { type: string }
+        updated_at: { type: string }
+        deleted_at: { type: string, nullable: true }
+
+    ExpensePayment:
+      type: object
+      properties:
+        id: { type: integer }
+        amount: { type: number }
+        currency: { $ref: '#/components/schemas/Currency' }
+        note: { type: string }
+        created_at: { type: string }
+        created_by: { type: integer, nullable: true }
+        created_by_name: { type: string }
+        voided_at: { type: string, nullable: true }
+        voided_by: { type: integer, nullable: true }
+        voided_by_name: { type: string, nullable: true }
+        void_reason: { type: string, nullable: true }
+
+    ExpenseStats:
+      type: object
+      properties:
+        total: { type: integer }
+        unpaid: { type: integer }
+        partiallyPaid: { type: integer }
+        paid: { type: integer }
+        archived: { type: integer }
+        currencies:
+          type: array
+          description: Per-currency totals (count, openCount, totalAmount, totalPaid, totalRemaining); never summed across codes.
+          items:
+            type: object
+            properties:
+              currency: { $ref: '#/components/schemas/Currency' }
+              count: { type: integer }
+              openCount: { type: integer }
+              totalAmount: { type: number }
+              totalPaid: { type: number }
+              totalRemaining: { type: number }

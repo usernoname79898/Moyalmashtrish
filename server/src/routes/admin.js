@@ -542,7 +542,7 @@ router.get('/dashboard', async (req, res) => {
       .prepare(
         `SELECT
            COUNT(*)                                        AS total,
-           COALESCE(SUM(GREATEST(remaining_amount, 0)), 0) AS outstanding,
+           COALESCE(SUM(GREATEST(remaining_amount, 0)) FILTER (WHERE currency = 'UZS'), 0) AS outstanding,
            COUNT(*) FILTER (WHERE created_at >= to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD')::text) AS createdToday
          FROM debts WHERE deleted_at IS NULL`
       )

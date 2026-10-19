@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../../api';
 import Icon from '../../components/icons';
 import { Loading, Alert, Badge, Modal, Toggle } from '../../components/ui';
+import { money as formatMoney, DEFAULT_CURRENCY } from '../../money';
+import CurrencySelect from '../../components/CurrencySelect';
 import {
   MAX_PRODUCTS,
   addDraft as addDraftTo,
@@ -78,16 +80,17 @@ function withUnit(n, u) {
 }
 
 /**
- * Money in so'm, grouped: 45000 -> "45 000 so'm", 185000.5 -> "185 000,5 so'm".
+ * Money in the product's own currency: 45000 -> "45 000 so'm",
+ * 185000.5 -> "185 000,5 so'm", and a USD product -> "$1,500.75".
  *
- * The locale already puts a non-breaking space between thousands and a comma
- * before the decimals, so the decimal comma has to be kept -- rewriting it to a
- * space (as this used to) turned 45000.5 into the unreadable "45 000 5 so'm",
- * which the two-decimal prices on this screen reach routinely. The fraction is
- * capped at 2 to match NUMERIC(12,2) rather than the locale default of 3.
+ * The shared formatter keeps the so'm decimal comma (the warehouse stores
+ * two-decimal prices) and only normalises the non-breaking group space, so the
+ * old "45 000 5 so'm" bug a blanket comma rewrite produced cannot return. The
+ * currency label travels with each product; UZS is the default for a row that
+ * predates the column.
  */
-function money(n) {
-  return `${Number(n || 0).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} so'm`;
+function money(n, currency = DEFAULT_CURRENCY) {
+  return formatMoney(n, currency);
 }
 
 /** Signed delta for the movement history, e.g. "+4,5 L" / "-1 L". */
@@ -106,7 +109,7 @@ function productLabel(p) {
 
 const EMPTY_FORM = {
   name: '', type: 'oil', brand: '', viscosity: '', unit: 'liter', package_size: '',
-  cost_price: '', markup_amount: '',
+  cost_price: '', markup_amount: '', currency: DEFAULT_CURRENCY,
 };
 
 /**
@@ -524,9 +527,9 @@ function ProductRow({ product, onOpen, onEdit, onStock, onConsume, onAdjust }) {
       </td>
       <td className="px-4 py-3 text-right text-white/50">{withUnit(product.minimum_quantity, product.unit)}</td>
       <td className="px-4 py-3">{statusBadge(product)}</td>
-      <td className="px-4 py-3 text-right text-white/60">{money(product.cost_price)}</td>
-      <td className="px-4 py-3 text-right text-white/60">{money(product.markup_amount)}</td>
-      <td className="px-4 py-3 text-right font-semibold text-white/90">{money(product.sale_price)}</td>
+      <td className="px-4 py-3 text-right text-white/60">{money(product.cost_price, product.currency)}</td>
+      <td className="px-4 py-3 text-right text-white/60">{money(product.markup_amount, product.currency)}</td>
+      <td className="px-4 py-3 text-right font-semibold text-white/90">{money(product.sale_price, product.currency)}</td>
       <td className="px-4 py-3">
         <RowActions product={product} onOpen={onOpen} onEdit={onEdit} onStock={onStock} onConsume={onConsume} onAdjust={onAdjust} />
       </td>
@@ -557,7 +560,7 @@ function ProductCard({ product, onOpen, onEdit, onStock, onConsume, onAdjust }) 
         </div>
         <div>
           <div className="text-[10px] uppercase text-white/40">Sotuv narxi</div>
-          <div className="text-xs font-semibold text-white/70">{money(product.sale_price)}</div>
+          <div className="text-xs font-semibold text-white/70">{money(product.sale_price, product.currency)}</div>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 border-t border-white/5 pt-3">
@@ -890,6 +893,7 @@ function EditProductModal({ open, product, onClose, onSaved }) {
             package_size: String(product.package_size ?? ''),
             cost_price: String(product.cost_price ?? ''),
             markup_amount: String(product.markup_amount ?? ''),
+            currency: product.currency || DEFAULT_CURRENCY,
           }
         : EMPTY_FORM
     );
@@ -916,6 +920,7 @@ function EditProductModal({ open, product, onClose, onSaved }) {
         // have smuggled in.
         cost_price: String(form.cost_price ?? '').trim(),
         markup_amount: String(form.markup_amount ?? '').trim(),
+        currency: form.currency || DEFAULT_CURRENCY,
       };
       if (isOil) payload.viscosity = form.viscosity;
       await api.patch(`/admin/inventory/products/${product.id}`, payload);
@@ -963,8 +968,9 @@ function EditProductModal({ open, product, onClose, onSaved }) {
             <label className="label">Qadoq hajmi ({isOil ? 'L' : 'dona'})</label>
             <input className="field" inputMode="decimal" value={form.package_size} onChange={set('package_size')} placeholder={isOil ? '4' : '1'} />
           </div>
+          <CurrencySelect value={form.currency} onChange={set('currency')} />
           <div>
-            <label className="label">Summa (so'm)</label>
+            <label className="label">Summa (tannarx)</label>
             <input
               className="field"
               type="number"
@@ -978,7 +984,7 @@ function EditProductModal({ open, product, onClose, onSaved }) {
             <p className="mt-1 text-xs text-white/35">Do'konning xarid narxi.</p>
           </div>
           <div>
-            <label className="label">Ustama summa (so'm)</label>
+            <label className="label">Ustama summa</label>
             <input
               className="field"
               type="number"
@@ -992,7 +998,7 @@ function EditProductModal({ open, product, onClose, onSaved }) {
             <p className="mt-1 text-xs text-white/35">
               Sotuv narxi:{' '}
               <span className="font-semibold text-white/70">
-                {money(Number(form.cost_price || 0) + Number(form.markup_amount || 0))}
+                {money(Number(form.cost_price || 0) + Number(form.markup_amount || 0), form.currency)}
               </span>
             </p>
           </div>
@@ -1632,9 +1638,9 @@ function ProductDetailModal({ product, onClose }) {
             <SummaryTile label="Jami sarf" value={withUnit(data.totals.consumed, data.product.unit)} tone="text-red-300" />
             <SummaryTile label="Tuzatishlar" value={signed(data.totals.adjusted, data.product.unit)} tone="text-amber-300" />
             <SummaryTile label="Minimal" value={withUnit(data.product.minimum_quantity, data.product.unit)} tone="text-white/70" />
-            <SummaryTile label="Summa (tannarx)" value={money(data.product.cost_price)} tone="text-white/70" />
-            <SummaryTile label="Ustama" value={money(data.product.markup_amount)} tone="text-white/70" />
-            <SummaryTile label="Sotuv narxi" value={money(data.product.sale_price)} tone="text-white" />
+            <SummaryTile label="Summa (tannarx)" value={money(data.product.cost_price, data.product.currency)} tone="text-white/70" />
+            <SummaryTile label="Ustama" value={money(data.product.markup_amount, data.product.currency)} tone="text-white/70" />
+            <SummaryTile label="Sotuv narxi" value={money(data.product.sale_price, data.product.currency)} tone="text-white" />
           </div>
 
           {data.totals.consistent ? (

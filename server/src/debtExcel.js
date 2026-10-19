@@ -19,13 +19,19 @@ const ExcelJS = require('exceljs');
  * rows handed in, and every row is built from an explicit column list.
  */
 
-// The ledger stores so'm as whole numbers with no cents. Excel's built-in
-// accounting formats assume two decimals, which would report every figure as
-// 1 500 000.00 and misstate the ledger, so a custom format is used: grouped
-// thousands, no decimals, and the currency named in the header.
+// The ledger stores so'm as whole numbers with no subdivision in circulation, so
+// the UZS format shows grouped thousands and no decimals. USD keeps its cents and
+// is formatted with two decimals and a "$" so the two are never confused. Each
+// cell picks its format from the row's own currency; a UZS total is never added
+// to a USD one -- the summary below repeats per currency.
 const MONEY_FMT = '#,##0 "so\'m"';
+const MONEY_FMT_USD = '#,##0.00 "$"';
 const PLAIN_FMT = '#,##0';
 const DATE_FMT = 'yyyy-mm-dd hh:mm';
+
+function moneyFormat(currency) {
+  return currency === 'USD' ? MONEY_FMT_USD : MONEY_FMT;
+}
 
 /** Header fill: a dark slate that matches the app, so the file looks native. */
 const HEADER_BG = 'FF1E2A44';
@@ -114,11 +120,13 @@ async function buildDebtWorkbook({ debts, payments, auditLogs, totals, generated
     { header: 'Holati', width: 18 },
     { header: 'Yaratilgan sana', width: 18 },
     { header: 'Yangilangan sana', width: 18 },
+    { header: 'Valyuta', width: 10 },
   ];
   writeHeader(debtSheet, debtColumns);
 
   debts.forEach((d, i) => {
     const r = debtSheet.getRow(i + 2);
+    const fmt = moneyFormat(d.currency);
     r.values = [
       Number(d.id),
       sanitizeCell(d.full_name),
@@ -131,10 +139,11 @@ async function buildDebtWorkbook({ debts, payments, auditLogs, totals, generated
       sanitizeCell(d.status_label || d.status),
       toDate(d.created_at),
       toDate(d.updated_at),
+      sanitizeCell(d.currency),
     ];
-    r.getCell(6).numFmt = MONEY_FMT;
-    r.getCell(7).numFmt = MONEY_FMT;
-    r.getCell(8).numFmt = MONEY_FMT;
+    r.getCell(6).numFmt = fmt;
+    r.getCell(7).numFmt = fmt;
+    r.getCell(8).numFmt = fmt;
     r.getCell(10).numFmt = DATE_FMT;
     r.getCell(11).numFmt = DATE_FMT;
     r.alignment = { vertical: 'top', wrapText: true };
@@ -144,24 +153,31 @@ async function buildDebtWorkbook({ debts, payments, auditLogs, totals, generated
   finishSheet(debtSheet, debts.length + 1, debtColumns.length);
 
   // Summary, taken from the aggregate the route computed over the SAME filtered
-  // set the rows came from. Placed two rows under the last one so it never
+  // set the rows came from. One block per currency, so a USD total is never
+  // added to a so'm total. Placed two rows under the last row so it never
   // interrupts the autofilter range.
-  const sumRow = debts.length + 3;
-  debtSheet.getCell(sumRow, 2).value = 'Jami qarz:';
-  debtSheet.getCell(sumRow, 6).value = Number(totals.total_debt);
-  debtSheet.getCell(sumRow, 6).numFmt = MONEY_FMT;
-  debtSheet.getCell(sumRow + 1, 2).value = "Jami to'langan:";
-  debtSheet.getCell(sumRow + 1, 6).value = Number(totals.total_paid);
-  debtSheet.getCell(sumRow + 1, 6).numFmt = MONEY_FMT;
-  debtSheet.getCell(sumRow + 2, 2).value = 'Jami qoldiq:';
-  debtSheet.getCell(sumRow + 2, 6).value = Number(totals.total_remaining);
-  debtSheet.getCell(sumRow + 2, 6).numFmt = MONEY_FMT;
-  for (let i = 0; i < 3; i++) {
-    const r = debtSheet.getRow(sumRow + i);
-    r.font = { bold: true };
-    r.getCell(2).font = { bold: true, color: { argb: TOTAL_FG } };
-    r.getCell(6).font = { bold: true, color: { argb: TOTAL_FG } };
-    r.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: TOTAL_BG } };
+  const byCurrency = (totals && totals.byCurrency) || [];
+  let sumRow = debts.length + 3;
+  for (const c of byCurrency) {
+    const fmt = moneyFormat(c.currency);
+    const suffix = ` (${c.currency})`;
+    debtSheet.getCell(sumRow, 2).value = `Jami qarz${suffix}:`;
+    debtSheet.getCell(sumRow, 6).value = Number(c.total_debt);
+    debtSheet.getCell(sumRow, 6).numFmt = fmt;
+    debtSheet.getCell(sumRow + 1, 2).value = `Jami to'langan${suffix}:`;
+    debtSheet.getCell(sumRow + 1, 6).value = Number(c.total_paid);
+    debtSheet.getCell(sumRow + 1, 6).numFmt = fmt;
+    debtSheet.getCell(sumRow + 2, 2).value = `Jami qoldiq${suffix}:`;
+    debtSheet.getCell(sumRow + 2, 6).value = Number(c.total_remaining);
+    debtSheet.getCell(sumRow + 2, 6).numFmt = fmt;
+    for (let i = 0; i < 3; i++) {
+      const r = debtSheet.getRow(sumRow + i);
+      r.font = { bold: true };
+      r.getCell(2).font = { bold: true, color: { argb: TOTAL_FG } };
+      r.getCell(6).font = { bold: true, color: { argb: TOTAL_FG } };
+      r.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: TOTAL_BG } };
+    }
+    sumRow += 3;
   }
 
   // --------------------------------------------------------------- To'lovlar
@@ -175,6 +191,7 @@ async function buildDebtWorkbook({ debts, payments, auditLogs, totals, generated
     { header: "To'lov sanasi", width: 18 },
     { header: 'Izoh', width: 38 },
     { header: 'Admin', width: 22 },
+    { header: 'Valyuta', width: 10 },
   ];
   writeHeader(paySheet, payColumns);
 
@@ -189,8 +206,9 @@ async function buildDebtWorkbook({ debts, payments, auditLogs, totals, generated
       toDate(p.created_at),
       sanitizeCell(p.note),
       sanitizeCell(p.created_by_name),
+      sanitizeCell(p.currency),
     ];
-    r.getCell(5).numFmt = MONEY_FMT;
+    r.getCell(5).numFmt = moneyFormat(p.currency);
     r.getCell(6).numFmt = DATE_FMT;
     r.alignment = { vertical: 'top', wrapText: true };
     r.getCell(5).alignment = { vertical: 'top', horizontal: 'right' };
@@ -251,19 +269,22 @@ function auditSummary(row) {
     return 'metadata o\'qilmadi';
   }
   if (!meta || typeof meta !== 'object') return '';
+  // Amounts in metadata carry their currency; older rows predate the field and
+  // were always so'm, so the fallback stays correct for them.
+  const unit = meta.currency ? String(meta.currency) : "so'm";
   const parts = [];
-  if (meta.amount != null) parts.push(`${meta.amount} so'm`);
-  if (meta.settled_amount != null) parts.push(`yopildi: ${meta.settled_amount} so'm`);
+  if (meta.amount != null) parts.push(`${meta.amount} ${unit}`);
+  if (meta.settled_amount != null) parts.push(`yopildi: ${meta.settled_amount} ${unit}`);
   if (meta.note) parts.push(String(meta.note));
-  if (meta.opening_quantity != null) parts.push(`boshlang'ich: ${meta.opening_quantity} so'm`);
-  if (meta.remaining_amount != null) parts.push(`qoldiq: ${meta.remaining_amount} so'm`);
+  if (meta.opening_quantity != null) parts.push(`boshlang'ich: ${meta.opening_quantity} ${unit}`);
+  if (meta.remaining_amount != null) parts.push(`qoldiq: ${meta.remaining_amount} ${unit}`);
   if (meta.status) parts.push(`holat: ${meta.status}`);
   if (meta.reason) parts.push(String(meta.reason));
-  if (meta.debt_amount != null) parts.push(`qarz: ${meta.debt_amount} so'm`);
-  if (meta.paid_amount != null) parts.push(`to'langan: ${meta.paid_amount} so'm`);
+  if (meta.debt_amount != null) parts.push(`qarz: ${meta.debt_amount} ${unit}`);
+  if (meta.paid_amount != null) parts.push(`to'langan: ${meta.paid_amount} ${unit}`);
   if (meta.full_name) parts.push(String(meta.full_name));
   if (meta.batch_size != null) parts.push(`partiya: ${meta.batch_position}/${meta.batch_size}`);
   return parts.join(' · ');
 }
 
-module.exports = { buildDebtWorkbook, sanitizeCell, toDate, MONEY_FMT, DATE_FMT };
+module.exports = { buildDebtWorkbook, sanitizeCell, toDate, MONEY_FMT, MONEY_FMT_USD, DATE_FMT };

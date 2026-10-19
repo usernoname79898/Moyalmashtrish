@@ -11,6 +11,7 @@ import UsersAdmin from './pages/admin/UsersAdmin';
 import ApplicationsAdmin from './pages/admin/ApplicationsAdmin';
 import WorkLogs from './pages/admin/WorkLogs';
 import DebtLedger from './pages/admin/DebtLedger';
+import Expenses from './pages/admin/Expenses';
 import Inventory from './pages/admin/Inventory';
 import MediaAdmin from './pages/admin/MediaAdmin';
 import ProtectedRoute from './pages/admin/ProtectedRoute';
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="applications" element={<ApplicationsAdmin />} />
         <Route path="worklogs" element={<WorkLogs />} />
         <Route path="debts" element={<DebtLedger />} />
+        <Route path="expenses" element={<Expenses />} />
         <Route path="inventory" element={<Inventory />} />
         <Route path="media" element={<MediaAdmin />} />
       </Route>

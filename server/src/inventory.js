@@ -14,6 +14,7 @@
  * second pooled connection and lock nothing at all.
  */
 const db = require('./db');
+const { normalizeCurrency } = require('./currency');
 
 const { db: pool } = db;
 
@@ -27,7 +28,7 @@ const { db: pool } = db;
 // bare expression safe here.
 const PRODUCT_FIELDS =
   'id, name, type, brand, viscosity, unit, package_size, current_quantity, ' +
-  'minimum_quantity, cost_price, markup_amount, ' +
+  'minimum_quantity, cost_price, markup_amount, currency, ' +
   'cost_price + markup_amount AS sale_price, ' +
   'is_active, created_at, updated_at';
 
@@ -221,6 +222,12 @@ function validateProduct(input) {
   out.cost_price = parseMoney(input.cost_price, 'Kelish narxi');
   out.markup_amount = parseMoney(input.markup_amount, 'Ustama summa');
 
+  // The product's prices are in one currency, chosen at creation and editable
+  // afterwards. Warehouse money is NUMERIC(12,2) for both currencies (the cost is
+  // entered with its qopiks), so this labels the figures rather than changing
+  // their precision. Absent means UZS, the historical default.
+  out.currency = normalizeCurrency(input.currency);
+
   return out;
 }
 
@@ -270,6 +277,7 @@ function snapshot(p) {
     minimum_quantity: Number(p.minimum_quantity),
     cost_price: Number(p.cost_price),
     markup_amount: Number(p.markup_amount),
+    currency: p.currency,
     is_active: Number(p.is_active),
   };
 }
@@ -540,8 +548,8 @@ async function createProduct(runner, req, input, opts = {}) {
     .prepare(
       `INSERT INTO inventory_products
          (name, type, brand, viscosity, unit, package_size, current_quantity,
-          minimum_quantity, cost_price, markup_amount, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+          minimum_quantity, cost_price, markup_amount, currency, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
        RETURNING ${PRODUCT_FIELDS}`
     )
     .one(
@@ -554,7 +562,8 @@ async function createProduct(runner, req, input, opts = {}) {
       0,
       clean.minimum_quantity,
       clean.cost_price,
-      clean.markup_amount
+      clean.markup_amount,
+      clean.currency
     );
 
   let openingMovementId = null;

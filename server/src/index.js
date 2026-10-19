@@ -16,6 +16,7 @@ const worklogsRouter = require('./routes/worklogs');
 const workimagesRouter = require('./routes/workimages');
 const debtsRouter = require('./routes/debts').router;
 const inventoryRouter = require('./routes/inventory').router;
+const expensesRouter = require('./routes/expenses').router;
 const { createCorsOptions, ConfigurationError } = require('./cors');
 
 const app = express();
@@ -251,6 +252,9 @@ app.use('/api/admin/debts', debtsRouter);
 // auth.authenticate to itself, so there is no unauthenticated path to stock
 // levels or purchase costs.
 app.use('/api/admin/inventory', inventoryRouter);
+// Supplier-credit ledger ("Moy hisob-kitob"). super_admin only, enforced inside
+// the router itself; there is no unauthenticated path to what the shop owes.
+app.use('/api/admin/expenses', expensesRouter);
 app.use('/api/workimages', workimagesRouter);
 
 const uploadsDir = require('./paths').uploadsDir;

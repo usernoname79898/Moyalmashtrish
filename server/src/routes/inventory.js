@@ -134,8 +134,8 @@ router.get('/stats', async (req, res) => {
          COUNT(*) FILTER (WHERE is_active = 0)                                               AS inactive_products,
          COUNT(*) FILTER (WHERE is_active = 1 AND current_quantity <= 0)                      AS out_of_stock,
          COUNT(*) FILTER (WHERE is_active = 1 AND current_quantity > 0 AND current_quantity <= minimum_quantity) AS low_stock,
-         COALESCE(SUM(current_quantity * cost_price) FILTER (WHERE type = 'oil' AND is_active = 1), 0)    AS oil_value,
-         COALESCE(SUM(current_quantity * cost_price) FILTER (WHERE type = 'filter' AND is_active = 1), 0) AS filter_value
+         COALESCE(SUM(current_quantity * cost_price) FILTER (WHERE type = 'oil' AND is_active = 1 AND currency = 'UZS'), 0)    AS oil_value,
+         COALESCE(SUM(current_quantity * cost_price) FILTER (WHERE type = 'filter' AND is_active = 1 AND currency = 'UZS'), 0) AS filter_value
        FROM inventory_products`
     )
     .get();
@@ -221,7 +221,7 @@ router.get('/export.csv', async (req, res) => {
     res,
     `ombor-${inv.appNow()}.csv`,
     ['Mahsulot', 'Turi', 'Brend', 'Viskozitet', 'Birlik', 'Qadoq', 'Qoldiq', 'Minimal',
-      'Summa', 'Ustama', 'Sotuv narxi', 'Holat'],
+      'Summa', 'Ustama', 'Sotuv narxi', 'Holat', 'Valyuta'],
     rows.map((p) => [
       p.name,
       p.type === 'oil' ? 'Moy' : 'Filtr',
@@ -235,6 +235,7 @@ router.get('/export.csv', async (req, res) => {
       Number(p.markup_amount),
       Number(p.sale_price),
       Number(p.is_active) ? STATE_UZ[stockState(p)] : 'Arxiv',
+      p.currency,
     ])
   );
 });
@@ -511,6 +512,7 @@ router.patch('/products/:id', async (req, res) => {
     minimum_quantity: body.minimum_quantity !== undefined ? body.minimum_quantity : existing.minimum_quantity,
     cost_price: body.cost_price !== undefined ? body.cost_price : existing.cost_price,
     markup_amount: body.markup_amount !== undefined ? body.markup_amount : existing.markup_amount,
+    currency: body.currency !== undefined ? body.currency : existing.currency,
   });
 
   const isActive =
@@ -536,7 +538,7 @@ router.patch('/products/:id', async (req, res) => {
       .prepare(
         `UPDATE inventory_products
             SET name = ?, type = ?, brand = ?, viscosity = ?, unit = ?, package_size = ?,
-                minimum_quantity = ?, cost_price = ?, markup_amount = ?, is_active = ?,
+                minimum_quantity = ?, cost_price = ?, markup_amount = ?, currency = ?, is_active = ?,
                 updated_at = app_now()
           WHERE id = ?
         RETURNING ${inv.PRODUCT_FIELDS}`
@@ -551,6 +553,7 @@ router.patch('/products/:id', async (req, res) => {
         clean.minimum_quantity,
         clean.cost_price,
         clean.markup_amount,
+        clean.currency,
         isActive,
         id
       );
