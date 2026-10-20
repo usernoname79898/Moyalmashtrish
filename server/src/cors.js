@@ -54,7 +54,7 @@ function resolveAllowedOrigins() {
     if (!configured.length) {
       throw new ConfigurationError(
         'CLIENT_ORIGIN is required when NODE_ENV=production. ' +
-          'Set it to the public URL of the frontend, e.g. CLIENT_ORIGIN=https://avtoservis.uz'
+          'Set it to the public URL of the frontend, e.g. CLIENT_ORIGIN=https://amper.uz'
       );
     }
     return { origins: configured, wildcard: false, localAllowed: false };

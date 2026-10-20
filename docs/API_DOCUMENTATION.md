@@ -31,14 +31,13 @@ below exists in the code; nothing here is speculative.
 
 | Environment | Base URL | Evidence |
 |---|---|---|
-| **Production** | `https://javohirautoservis.uz` | `server/.env.example` lists it as a production `CLIENT_ORIGIN` |
-| Production (Vercel alias) | `https://avtoservis-iota.vercel.app` | `server/.env.example` |
+| **Production** | `https://amper.uz` | Public deployment domain |
 | Local dev | `http://localhost:4000` | `PORT` default in `server/src/index.js` |
 
 All API paths below are relative to the base URL:
 
 ```
-https://javohirautoservis.uz/api/auth/login
+https://amper.uz/api/auth/login
 ```
 
 Routing (from `vercel.json`): every request to `/api/*` is forwarded to the
@@ -1017,7 +1016,7 @@ Env vars that shape behaviour (server-side only, never exposed to clients):
 ### 15.1 cURL — login and call an admin endpoint
 
 ```bash
-BASE=https://javohirautoservis.uz
+BASE=https://amper.uz
 
 # 1. login, keep the cookie jar
 curl -c jar.txt -X POST "$BASE/api/auth/login" \
@@ -1098,7 +1097,7 @@ const { worklogs } = await api('GET', '/admin/worklogs');
 ```python
 import requests
 
-BASE = "https://javohirautoservis.uz/api"
+BASE = "https://amper.uz/api"
 s = requests.Session()
 
 r = s.post(f"{BASE}/auth/login", json={"username": "admin", "password": "…"})

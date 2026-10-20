@@ -834,7 +834,7 @@ async function securityTests(ctx) {
   check(mr.status === 403 && mr.acao === null, 'P1.22 a list does not become a wildcard', `status=${mr.status} acao=${mr.acao}`);
   mr = await multiFrom(`${secondOrigin}.evil.com`);
   check(mr.status === 403, 'P1.23 suffix lookalike of a listed origin rejected', `status=${mr.status}`);
-  mr = await multiFrom('https://javohirautoservis.uz.evil.com');
+  mr = await multiFrom('https://amper.uz.evil.com');
   check(mr.status === 403, 'P1.24 origin-as-prefix lookalike rejected', `status=${mr.status}`);
   const multiPre = await fetch(multiBase + '/api/auth/login', {
     method: 'OPTIONS',

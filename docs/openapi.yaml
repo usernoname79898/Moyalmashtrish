@@ -35,10 +35,8 @@ info:
   contact:
     name: AvtoServis
 servers:
-  - url: https://javohirautoservis.uz
-    description: Production (custom domain listed in server/.env.example)
-  - url: https://avtoservis-iota.vercel.app
-    description: Production (Vercel alias listed in server/.env.example)
+  - url: https://amper.uz
+    description: Production
   - url: http://localhost:4000
     description: Local development
 tags:
