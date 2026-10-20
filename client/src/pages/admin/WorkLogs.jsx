@@ -268,6 +268,7 @@ function WorkCard({ w, isSA, onEdit, onDelete, onOpenLightbox, reload, onError }
             <h3 className="font-bold text-white">{w.title}</h3>
             <Badge kind="default">{w.service_type}</Badge>
             <StatusBadge status={w.status} />
+            {isSA && w.payment_status && w.payment_status !== 'paid' && <Badge kind={PAYMENT_BADGES[w.payment_status]?.kind || 'default'}>{PAYMENT_BADGES[w.payment_status]?.label || w.payment_status}</Badge>}
             {w.is_public ? <Badge kind="primary">Saytda</Badge> : null}
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/50">
@@ -310,9 +311,23 @@ function WorkCard({ w, isSA, onEdit, onDelete, onOpenLightbox, reload, onError }
 }
 
 const EMPTY_FORM = {
-  title: '', customer_name: '', customer_phone: '', car_brand: '', car_model: '', car_number: '',
-  service_type: '', description: '', start_date: '', end_date: '', scheduled_time: '', price: '', status: 'Jarayonda',
+  title: '', customer_id: '', vehicle_id: '', customer_name: '', customer_phone: '', car_brand: '', car_model: '', car_number: '',
+  service_type: '', description: '', diagnosis: '', start_date: '', end_date: '', scheduled_time: '',
+  parts_cost: '', labor_cost: '', price: '', status: 'Jarayonda',
+  payment_status: 'unpaid', paid_amount: '', payment_method: '',
   notes: '', is_public: false, master_id: '', currency: DEFAULT_CURRENCY,
+};
+
+const PAYMENT_STATUSES = [
+  ['unpaid', "To'lanmagan"],
+  ['partially_paid', "Qisman to'langan"],
+  ['paid', "To'langan"],
+];
+
+const PAYMENT_BADGES = {
+  unpaid: { label: "To'lanmagan", kind: 'danger' },
+  partially_paid: { label: "Qisman to'langan", kind: 'warn' },
+  paid: { label: "To'langan", kind: 'success' },
 };
 
 export function WorkForm({ isSA, initial, defaultStatus, masters, onClose, onSaved }) {
@@ -340,9 +355,54 @@ export function WorkForm({ isSA, initial, defaultStatus, masters, onClose, onSav
   const [products, setProducts] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [matErr, setMatErr] = useState('');
+  const [customers, setCustomers] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
+  const [history, setHistory] = useState([]);
   const fileRef = useRef(null);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  useEffect(() => {
+    api.get('/admin/customers?per_page=100')
+      .then(({ customers: rows }) => setCustomers(rows || []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!form.customer_id) { setVehicles([]); return; }
+    api.get(`/admin/vehicles?customer_id=${form.customer_id}&per_page=100`)
+      .then(({ vehicles: rows }) => setVehicles(rows || []))
+      .catch(() => setVehicles([]));
+  }, [form.customer_id]);
+
+  useEffect(() => {
+    if (!isEdit) { setHistory([]); return; }
+    api.get('/admin/worklogs/' + initial.id)
+      .then(({ work }) => setHistory(work.status_history || []))
+      .catch(() => setHistory([]));
+  }, [isEdit, initial.id]);
+
+  function chooseCustomer(id) {
+    const customer = customers.find((c) => String(c.id) === String(id));
+    setForm((f) => ({
+      ...f,
+      customer_id: id,
+      vehicle_id: '',
+      customer_name: customer ? customer.full_name : '',
+      customer_phone: customer ? (customer.phone || '') : '',
+    }));
+  }
+
+  function chooseVehicle(id) {
+    const vehicle = vehicles.find((v) => String(v.id) === String(id));
+    setForm((f) => ({
+      ...f,
+      vehicle_id: id,
+      car_brand: vehicle ? (vehicle.brand || '') : '',
+      car_model: vehicle ? (vehicle.model || '') : '',
+      car_number: vehicle ? (vehicle.plate_number || '') : '',
+    }));
+  }
 
   useEffect(() => {
     if (!isSA) return undefined;
@@ -474,6 +534,20 @@ export function WorkForm({ isSA, initial, defaultStatus, masters, onClose, onSav
             </div>
           )}
           <div>
+            <label className="label">Mavjud mijoz</label>
+            <select className="field" value={form.customer_id || ''} onChange={(e) => chooseCustomer(e.target.value)}>
+              <option value="" className="bg-[#111725]">Yangi / qo'lda kiritish</option>
+              {customers.map((customer) => <option key={customer.id} value={customer.id} className="bg-[#111725]">{customer.full_name}{customer.phone ? ` · ${customer.phone}` : ''}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Mavjud avtomobil</label>
+            <select className="field" value={form.vehicle_id || ''} onChange={(e) => chooseVehicle(e.target.value)} disabled={!form.customer_id}>
+              <option value="" className="bg-[#111725]">{form.customer_id ? 'Avtomobil tanlanmagan' : 'Avval mijozni tanlang'}</option>
+              {vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id} className="bg-[#111725]">{[vehicle.brand, vehicle.model].filter(Boolean).join(' ')}{vehicle.plate_number ? ` · ${vehicle.plate_number}` : ''}</option>)}
+            </select>
+          </div>
+          <div>
             <label className="label">Mijoz ismi</label>
             <input className="field" value={form.customer_name} onChange={set('customer_name')} placeholder="Ali Valiyev" />
           </div>
@@ -553,12 +627,56 @@ export function WorkForm({ isSA, initial, defaultStatus, masters, onClose, onSav
               {STATUSES.map((s) => <option key={s} value={s} className="bg-[#111725]">{s}</option>)}
             </select>
           </div>
+          <div>
+            <label className="label">Ehtiyot qismlar narxi</label>
+            <input type="number" min="0" className="field" value={form.parts_cost ?? ''} onChange={set('parts_cost')} placeholder="0" />
+          </div>
+          <div>
+            <label className="label">Ish haqi (labor) narxi</label>
+            <input type="number" min="0" className="field" value={form.labor_cost ?? ''} onChange={set('labor_cost')} placeholder="0" />
+          </div>
+          {isSA && (
+            <>
+              <div>
+                <label className="label">To'lov holati</label>
+                <select className="field" value={form.payment_status || 'unpaid'} onChange={set('payment_status')}>
+                  {PAYMENT_STATUSES.map(([value, label]) => <option key={value} value={value} className="bg-[#111725]">{label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">To'langan summa</label>
+                <input type="number" min="0" className="field" value={form.paid_amount ?? ''} onChange={set('paid_amount')} disabled={form.payment_status !== 'partially_paid'} placeholder={form.payment_status === 'paid' ? 'To\'liq narx' : '0'} />
+                {form.payment_status === 'partially_paid' && Number(form.paid_amount) > 0 && <p className="mt-1 text-xs text-white/35">Qoldiq: {fmt(Math.max(Number(form.price || 0) - Number(form.paid_amount || 0), 0), form.currency)}</p>}
+              </div>
+              <div>
+                <label className="label">To'lov usuli</label>
+                <input className="field" value={form.payment_method || ''} onChange={set('payment_method')} placeholder="Naqd, karta, o'tkazma..." />
+              </div>
+            </>
+          )}
         </div>
 
         <div>
           <label className="label">Bajarilgan ish tavsifi</label>
           <textarea className="field min-h-[90px]" value={form.description} onChange={set('description')} placeholder="Qanday ishlar bajarildi, qanday qismlar almashtirildi..." />
         </div>
+        <div>
+          <label className="label">Tashxis</label>
+          <textarea className="field min-h-[70px]" value={form.diagnosis || ''} onChange={set('diagnosis')} placeholder="Aniqlangan nosozlik va sababi..." />
+        </div>
+        {history.length > 0 && (
+          <div className="rounded-xl border border-white/5 bg-white/[0.03] p-4">
+            <label className="label !mb-2">Holat tarixi</label>
+            <div className="space-y-2">
+              {history.map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-3 text-xs">
+                  <span className="text-white/55">{item.status || item.to_status}{item.note ? ` — ${item.note}` : ''}</span>
+                  <span className="shrink-0 text-white/30">{String(item.created_at || '').slice(0, 16).replace('T', ' ')}{item.admin_name ? ` · ${item.admin_name}` : ''}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {!isEdit && isSA && (
           <div className="rounded-xl border border-white/5 bg-white/[0.03] p-4">

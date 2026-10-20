@@ -53,6 +53,7 @@ const paths = {
   car: 'M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11M5 11h14v6H5v-6Zm2 6v2M17 17v2M7.5 14h.01M16.5 14h.01',
   refresh: 'M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5',
   filter: 'M4 5h16l-6 7v6l-4 2v-8L4 5Z',
+  bell: 'M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9 M10 21h4',
 };
 
 export function Icon({ name, size = 24, className = '', strokeWidth = 1.8 }) {

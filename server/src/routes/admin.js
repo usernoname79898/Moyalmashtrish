@@ -512,6 +512,113 @@ router.post('/diagnostics/queries/reset', auth.authorize('super_admin'), (req, r
   res.json({ ok: true });
 });
 
+router.get('/notifications', async (req, res) => {
+  const isSA = req.user.role === 'super_admin';
+  const workScope = isSA ? '' : ' AND master_id = ?';
+  const workParams = isSA ? [] : [req.user.id];
+  const appointmentScope = isSA ? '' : ' AND (master_id = ? OR master_id IS NULL)';
+
+  const [appointments, waitingWorks, unpaidWorks, debts, applications, lowStock] = await Promise.all([
+    db
+      .prepare(
+        `SELECT COUNT(*)::int AS c FROM appointments
+          WHERE status IN ('Kutilayotgan', 'Tasdiqlangan')${appointmentScope}`
+      )
+      .get(workParams),
+    db
+      .prepare(`SELECT COUNT(*)::int AS c FROM work_logs WHERE status = 'Kutilayotgan'${workScope}`)
+      .get(workParams),
+    db
+      .prepare(
+        `SELECT COUNT(*)::int AS c FROM work_logs
+          WHERE status = 'Tugallangan' AND payment_status <> 'paid'${workScope}`
+      )
+      .get(workParams),
+    isSA
+      ? db
+          .prepare("SELECT COUNT(*)::int AS c FROM debts WHERE deleted_at IS NULL AND status <> 'paid'")
+          .get()
+      : Promise.resolve({ c: 0 }),
+    isSA
+      ? db
+          .prepare("SELECT COUNT(*)::int AS c FROM master_applications WHERE status = 'pending'")
+          .get()
+      : Promise.resolve({ c: 0 }),
+    isSA
+      ? db
+          .prepare('SELECT COUNT(*)::int AS c FROM inventory_products WHERE is_active = 1 AND current_quantity <= minimum_quantity')
+          .get()
+      : Promise.resolve({ c: 0 }),
+  ]);
+
+  const items = [];
+  if (Number(appointments.c)) {
+    items.push({
+      id: 'appointments',
+      kind: 'appointment',
+      title: `${appointments.c} ta navbat kutmoqda`,
+      detail: 'Tasdiqlash yoki ishga aylantirish kerak',
+      to: '/admin/queue',
+      count: Number(appointments.c),
+    });
+  }
+  if (Number(waitingWorks.c)) {
+    items.push({
+      id: 'waiting-works',
+      kind: 'work',
+      title: `${waitingWorks.c} ta ish boshlanmagan`,
+      detail: 'Kutilayotgan ishlar navbati',
+      to: '/admin/worklogs',
+      count: Number(waitingWorks.c),
+    });
+  }
+  if (Number(unpaidWorks.c)) {
+    items.push({
+      id: 'unpaid-works',
+      kind: 'payment',
+      title: `${unpaidWorks.c} ta ish to'lanmagan`,
+      detail: "To'lov holatini tekshiring",
+      to: '/admin/worklogs',
+      count: Number(unpaidWorks.c),
+    });
+  }
+  if (Number(debts.c)) {
+    items.push({
+      id: 'debts',
+      kind: 'debt',
+      title: `${debts.c} ta qarz yopilmagan`,
+      detail: "Qarz daftarini ko'rib chiqing",
+      to: '/admin/debts',
+      count: Number(debts.c),
+    });
+  }
+  if (Number(applications.c)) {
+    items.push({
+      id: 'applications',
+      kind: 'application',
+      title: `${applications.c} ta usta arizasi`,
+      detail: 'Arizalarni ko\'rib chiqish kerak',
+      to: '/admin/masters',
+      count: Number(applications.c),
+    });
+  }
+  if (Number(lowStock.c)) {
+    items.push({
+      id: 'low-stock',
+      kind: 'stock',
+      title: `${lowStock.c} ta mahsulot kam qoldi`,
+      detail: 'Ombor qoldig\'ini to\'ldiring',
+      to: '/admin/worklogs',
+      count: Number(lowStock.c),
+    });
+  }
+
+  res.json({
+    notifications: items,
+    total: items.reduce((sum, item) => sum + item.count, 0),
+  });
+});
+
 router.get('/dashboard', async (req, res) => {
   const totalServices = (await db.prepare('SELECT COUNT(*) c FROM services').get()).c;
   const activeServices = (await db.prepare('SELECT COUNT(*) c FROM services WHERE is_active = 1').get()).c;

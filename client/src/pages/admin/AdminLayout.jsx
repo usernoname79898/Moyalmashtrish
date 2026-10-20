@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAdmin, useSite } from '../../store';
 import { api } from '../../api';
@@ -6,11 +6,25 @@ import Icon from '../../components/icons';
 import { Spinner, Modal, Alert } from '../../components/ui';
 
 const NAV = [
-  { to: '/admin/worklogs', icon: 'document', label: 'Bajarilgan ish' },
-  { to: '/admin/debts', icon: 'money', label: 'Qarz daftar' },
-  { to: '/admin/queue', icon: 'clock', label: 'Navbatlar ro\'yxati' },
-  { to: '/admin/settings', icon: 'settings', label: 'Sayt sozlamalari' },
+  { to: '/admin/worklogs', icon: 'document', label: 'Bajarilgan ishlar' },
+  { to: '/admin/queue', icon: 'calendar', label: 'Navbatlar' },
+  { to: '/admin/customers', icon: 'user', label: 'Mijozlar' },
+  { to: '/admin/debts', icon: 'money', label: 'Qarz daftari' },
+  { to: '/admin/services', icon: 'wrench', label: 'Xizmatlar', permission: 'services' },
+  { to: '/admin/masters', icon: 'user', label: 'Ustalar', adminOnly: true },
+  { to: '/admin/vehicles', icon: 'car', label: 'Avtomobillar' },
+  { to: '/admin/statistics', icon: 'dashboard', label: 'Statistika' },
+  { to: '/admin/settings', icon: 'settings', label: 'Sayt sozlamalari', permission: 'content' },
 ];
+
+function canSee(item, user) {
+  if (item.adminOnly && user.role !== 'super_admin') return false;
+  if (item.permission && user.role !== 'super_admin') {
+    const list = Array.isArray(user.permissions) ? user.permissions : [];
+    return list.includes(item.permission);
+  }
+  return true;
+}
 
 export default function AdminLayout() {
   const { user, logout } = useAdmin();
@@ -18,7 +32,28 @@ export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [pwdOpen, setPwdOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState(null);
+  const [notifLoading, setNotifLoading] = useState(false);
   const navigate = useNavigate();
+
+  const loadNotifications = useCallback(async () => {
+    setNotifLoading(true);
+    try {
+      const data = await api.get('/admin/notifications');
+      setNotifications(data);
+    } catch {
+      setNotifications({ notifications: [], total: 0 });
+    } finally {
+      setNotifLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadNotifications();
+    const timer = setInterval(loadNotifications, 60000);
+    return () => clearInterval(timer);
+  }, [loadNotifications]);
 
   async function doLogout() {
     setConfirm(false);
@@ -52,7 +87,7 @@ export default function AdminLayout() {
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          {NAV.filter((n) => !n.adminOnly || user.role === 'super_admin').map((n) => (
+          {NAV.filter((n) => canSee(n, user)).map((n) => (
             <NavLink
               key={n.to}
               to={n.to}
@@ -89,6 +124,35 @@ export default function AdminLayout() {
           </button>
           <h1 className="text-sm font-semibold text-white/80">Boshqaruv paneli</h1>
           <div className="ml-auto flex items-center gap-3">
+            <div className="relative">
+              <button type="button" onClick={() => { setNotifOpen((open) => !open); if (!notifOpen) loadNotifications(); }} className="relative rounded-xl border border-white/10 p-2 text-white/65 transition hover:bg-white/5 hover:text-white" aria-label="Bildirishnomalar">
+                <Icon name="bell" size={17} />
+                {Number(notifications?.total) > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{notifications.total > 99 ? '99+' : notifications.total}</span>}
+              </button>
+              {notifOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setNotifOpen(false)} />
+                  <div className="absolute right-0 z-40 mt-2 w-80 overflow-hidden rounded-2xl border border-white/10 bg-[#111725] shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                      <span className="text-sm font-bold">Bildirishnomalar</span>
+                      <button type="button" onClick={loadNotifications} className="text-white/40 hover:text-white"><Icon name="refresh" size={14} /></button>
+                    </div>
+                    {notifLoading && !notifications ? <div className="py-8 text-center text-xs text-white/40">Yuklanmoqda...</div> : !notifications || notifications.notifications.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-white/40">Yangi bildirishnoma yo'q</div>
+                    ) : (
+                      <div className="max-h-80 overflow-y-auto">
+                        {notifications.notifications.map((item) => (
+                          <button key={item.id} type="button" onClick={() => { setNotifOpen(false); navigate(item.to); }} className="flex w-full items-start gap-3 border-b border-white/5 px-4 py-3 text-left transition last:border-0 hover:bg-white/5">
+                            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5 text-white/55"><Icon name={item.kind === 'payment' ? 'money' : item.kind === 'appointment' ? 'calendar' : item.kind === 'debt' ? 'money' : item.kind === 'application' ? 'user' : item.kind === 'stock' ? 'box' : 'document'} size={15} /></span>
+                            <span className="min-w-0"><span className="block text-sm text-white/80">{item.title}</span><span className="mt-0.5 block text-xs text-white/40">{item.detail}</span></span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
             <span className="hidden rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/60 sm:block">{user.username}</span>
             <a href="/" className="flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-xs font-medium text-white/70 transition hover:bg-white/5" target="_blank" rel="noreferrer">
               <Icon name="home" size={14} />

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import { useAdmin } from '../../store';
 import Icon from '../../components/icons';
@@ -222,6 +223,10 @@ export default function QueuePage() {
               {savingPublic && <Spinner className="h-4 w-4" />}
             </div>
           )}
+          <Link to="/admin/appointments" className="admin-btn-ghost">
+            <Icon name="calendar" size={17} />
+            Qabullar
+          </Link>
           <button type="button" onClick={refresh} className="admin-btn-ghost !px-3" title="Yangilash" aria-label="Yangilash">
             <Icon name="refresh" size={17} />
           </button>

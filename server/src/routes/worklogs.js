@@ -6,6 +6,7 @@ const { db } = require('../db');
 const auth = require('../auth');
 const storage = require('../storage');
 const inv = require('../inventory');
+const crm = require('../crm');
 const { normalizeCurrency } = require('../currency');
 
 const router = require('../asyncRoute').wrapRouter(express.Router());
@@ -31,9 +32,14 @@ const MAX_WORK_IMAGES = 15;
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
 const WORK_LIST_FIELDS = `
-  w.id, w.master_id, w.title, w.customer_name, w.customer_phone, w.car_brand, w.car_model,
-  w.car_number, w.service_type, w.description, w.start_date, w.end_date, w.scheduled_time,
-  w.price, w.currency, w.status, w.is_public, w.notes, w.created_at, w.updated_at, u.full_name AS master_name`;
+  w.id, w.master_id, w.customer_id, w.vehicle_id, w.appointment_id, w.title, w.customer_name,
+  w.customer_phone, w.car_brand, w.car_model, w.car_number, w.service_type, w.description,
+  w.diagnosis, w.start_date, w.end_date, w.scheduled_time, w.parts_cost, w.labor_cost,
+  w.price, w.currency, w.status, w.payment_status, w.paid_amount, w.payment_method,
+  w.completed_at, w.created_by, w.is_public, w.notes, w.created_at, w.updated_at,
+  u.full_name AS master_name`;
+
+const PAYMENT_STATUSES = ['unpaid', 'partially_paid', 'paid'];
 
 function ensureWorkDir() {
   if (!fs.existsSync(WORK_DIR)) fs.mkdirSync(WORK_DIR, { recursive: true });
@@ -159,9 +165,25 @@ async function consumeMaterials(t, req, workLogId, materials) {
 
 async function decorate(row) {
   if (!row) return null;
-  const w = { ...row, is_public: row.is_public ? 1 : 0, price: Number(row.price) || 0 };
+  const w = {
+    ...row,
+    is_public: row.is_public ? 1 : 0,
+    price: Number(row.price) || 0,
+    parts_cost: Number(row.parts_cost) || 0,
+    labor_cost: Number(row.labor_cost) || 0,
+    paid_amount: Number(row.paid_amount) || 0,
+  };
   w.images = await imagesFor(w.id);
   return w;
+}
+
+async function statusHistoryFor(workId) {
+  return db
+    .prepare(
+      `SELECT id, from_status, to_status, admin_id, admin_name, note, created_at
+         FROM work_log_status_history WHERE work_log_id = ? ORDER BY created_at ASC, id ASC`
+    )
+    .all(workId);
 }
 
 const SANITIZE = /[^a-zA-Z0-9._-]/g;
@@ -287,6 +309,20 @@ function validateWorkBody(b, previousServiceType, catalog) {
     return { error: 'Navbat vaqti noto\'g\'ri (HH:MM)' };
   }
   if (!Number.isFinite(price) || price < 0 || price > 1e12) return { error: 'Narx noto\'g\'ri' };
+  const amount = (value, label) => {
+    if (value === '' || value === null || value === undefined) return 0;
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0 || n > 1e12) throw crm.badRequest(`${label} noto'g'ri`);
+    return n;
+  };
+  let parts_cost;
+  let labor_cost;
+  try {
+    parts_cost = amount(b.parts_cost, 'Ehtiyot qismlar narxi');
+    labor_cost = amount(b.labor_cost, 'Ish haqi narxi');
+  } catch (err) {
+    return { error: err.message };
+  }
   // The price is the amount charged for the job and is quoted in one currency,
   // chosen with the log. It is a NUMERIC(14,2) label like the warehouse's, so the
   // historical decimal support stays; the currency only decides how it is shown.
@@ -306,14 +342,144 @@ function validateWorkBody(b, previousServiceType, catalog) {
     car_number: clean(b.car_number, 30),
     service_type: canonicalType,
     description: clean(b.description, 5000),
+    diagnosis: clean(b.diagnosis, 5000),
     start_date: clean(b.start_date, 20),
     end_date: clean(b.end_date, 20),
     scheduled_time: scheduledTime,
+    parts_cost,
+    labor_cost,
     price,
     currency,
     status,
     notes: clean(b.notes, 2000),
   };
+}
+
+function nowSql() {
+  return new Date().toISOString().replace('T', ' ').slice(0, 19);
+}
+
+async function resolveWorkRelations(b, v, existing) {
+  const hadCustomerKey = Object.prototype.hasOwnProperty.call(b, 'customer_id');
+  const customerRaw = hadCustomerKey ? b.customer_id : existing && existing.customer_id;
+  const customerIdInput = customerRaw === '' || customerRaw === null || customerRaw === undefined
+    ? null
+    : crm.positiveId(customerRaw);
+  if (customerRaw !== '' && customerRaw !== null && customerRaw !== undefined && !customerIdInput) {
+    throw crm.badRequest("Mijoz noto'g'ri");
+  }
+  let customer = customerIdInput ? await crm.findCustomer(db, customerIdInput) : null;
+  if (customerIdInput && !customer) throw crm.badRequest('Mijoz topilmadi');
+
+  if (!customer && !hadCustomerKey && existing && existing.customer_id) {
+    customer = await crm.findCustomer(db, existing.customer_id);
+  }
+  if (!customer && (v.customer_name || v.customer_phone)) {
+    customer = await crm.findOrCreateCustomer(db, {
+      full_name: v.customer_name,
+      phone: v.customer_phone,
+    });
+  }
+
+  const hadVehicleKey = Object.prototype.hasOwnProperty.call(b, 'vehicle_id');
+  const vehicleRaw = hadVehicleKey ? b.vehicle_id : existing && existing.vehicle_id;
+  const vehicleIdInput = vehicleRaw === '' || vehicleRaw === null || vehicleRaw === undefined
+    ? null
+    : crm.positiveId(vehicleRaw);
+  if (vehicleRaw !== '' && vehicleRaw !== null && vehicleRaw !== undefined && !vehicleIdInput) {
+    throw crm.badRequest("Avtomobil noto'g'ri");
+  }
+  let vehicle = vehicleIdInput ? await crm.findVehicle(db, vehicleIdInput) : null;
+  if (vehicleIdInput && !vehicle) throw crm.badRequest('Avtomobil topilmadi');
+  if (!vehicle && !hadVehicleKey && existing && existing.vehicle_id) {
+    vehicle = await crm.findVehicle(db, existing.vehicle_id);
+  }
+  if (vehicle && customer && vehicle.customer_id && vehicle.customer_id !== customer.id) {
+    throw crm.badRequest("Avtomobil boshqa mijozga tegishli");
+  }
+  if (!customer && vehicle && vehicle.customer_id) {
+    customer = await crm.findCustomer(db, vehicle.customer_id);
+  }
+  if (!vehicle && customer && (v.car_brand || v.car_model || v.car_number)) {
+    vehicle = await crm.findOrCreateVehicle(db, {
+      brand: v.car_brand,
+      model: v.car_model,
+      plate_number: v.car_number,
+    }, customer.id);
+  }
+
+  if (customer) {
+    if (!v.customer_name) v.customer_name = customer.full_name || '';
+    if (!v.customer_phone) v.customer_phone = customer.phone || '';
+  }
+  if (vehicle) {
+    if (!v.car_brand) v.car_brand = vehicle.brand || '';
+    if (!v.car_model) v.car_model = vehicle.model || '';
+    if (!v.car_number) v.car_number = vehicle.plate_number || '';
+  }
+  return {
+    customer_id: customer ? customer.id : null,
+    vehicle_id: vehicle ? vehicle.id : null,
+  };
+}
+
+function validatePayment(b, existing, price, privileged) {
+  if (!privileged) {
+    return existing
+      ? {
+          payment_status: existing.payment_status || 'unpaid',
+          paid_amount: Number(existing.paid_amount) || 0,
+          payment_method: existing.payment_method || '',
+        }
+      : { payment_status: 'unpaid', paid_amount: 0, payment_method: '' };
+  }
+  let status = b.payment_status === undefined
+    ? (existing ? existing.payment_status : 'unpaid')
+    : String(b.payment_status || '').trim();
+  if (!PAYMENT_STATUSES.includes(status)) throw crm.badRequest("To'lov holati noto'g'ri");
+  let paid = b.paid_amount === undefined
+    ? (existing ? Number(existing.paid_amount) || 0 : 0)
+    : Number(b.paid_amount === '' || b.paid_amount === null ? 0 : b.paid_amount);
+  if (!Number.isFinite(paid) || paid < 0 || paid > 1e12) throw crm.badRequest("To'langan summa noto'g'ri");
+  if (paid > price) throw crm.badRequest("To'langan summa ish narxidan katta bo'lishi mumkin emas");
+  if (b.payment_status === undefined && b.paid_amount !== undefined) {
+    status = paid <= 0 ? 'unpaid' : paid >= price ? 'paid' : 'partially_paid';
+  }
+  if (status === 'unpaid') paid = 0;
+  if (status === 'paid') paid = price;
+  if (status === 'partially_paid' && !(paid > 0 && paid < price)) {
+    throw crm.badRequest("Qismiy to'lov summasi 0 dan katta va ish narxidan kichik bo'lishi kerak");
+  }
+  return {
+    payment_status: status,
+    paid_amount: paid,
+    payment_method: b.payment_method === undefined && existing
+      ? (existing.payment_method || '')
+      : crm.text(b.payment_method, "To'lov usuli", { max: 40 }),
+  };
+}
+
+async function recordStatus(runner, workId, fromStatus, toStatus, req, note = '') {
+  await runner
+    .prepare(
+      `INSERT INTO work_log_status_history (work_log_id, from_status, to_status, admin_id, admin_name, note)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .run(workId, fromStatus || '', toStatus, req.user.id, req.user.full_name || '', note);
+}
+
+async function syncAppointmentStatus(appointmentId, workStatus) {
+  if (!appointmentId) return;
+  const next = workStatus === 'Kutilayotgan'
+    ? 'Tasdiqlangan'
+    : workStatus === 'Jarayonda'
+      ? 'Jarayonda'
+      : workStatus === 'Tugallangan'
+        ? 'Tugallangan'
+        : 'Bekor qilingan';
+  await db
+    .prepare('UPDATE appointments SET status = ?, updated_at = app_now() WHERE id = ?')
+    .run(next, appointmentId);
 }
 
 router.get('/', async (req, res) => {
@@ -333,6 +499,24 @@ router.get('/', async (req, res) => {
   if (String(req.query.status || '').trim()) {
     conds.push('w.status = ?');
     params.push(String(req.query.status));
+  }
+  if (String(req.query.payment_status || '').trim()) {
+    conds.push('w.payment_status = ?');
+    params.push(String(req.query.payment_status));
+  }
+  if (String(req.query.customer_id || '').trim()) {
+    const customerId = crm.positiveId(req.query.customer_id);
+    if (customerId) {
+      conds.push('w.customer_id = ?');
+      params.push(customerId);
+    }
+  }
+  if (String(req.query.vehicle_id || '').trim()) {
+    const vehicleId = crm.positiveId(req.query.vehicle_id);
+    if (vehicleId) {
+      conds.push('w.vehicle_id = ?');
+      params.push(vehicleId);
+    }
   }
   if (String(req.query.date_from || '').trim()) {
     conds.push('(w.created_at)::date >= (? )::date');
@@ -431,16 +615,25 @@ router.post('/', async (req, res) => {
   } else {
     masterId = req.user.id;
   }
-  const v = validateWorkBody(req.body || {}, undefined, await serviceTypeCatalog());
+  const body = req.body || {};
+  const v = validateWorkBody(body, undefined, await serviceTypeCatalog());
   if (v.error) return res.status(400).json({ error: v.error });
+  const rel = await resolveWorkRelations(body, v, null);
+  let payment;
+  try {
+    payment = validatePayment(body, null, v.price, isSA(req.user));
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.message });
+  }
   // Shape-only validation. Sufficiency is checked under the row lock below, in
   // the same transaction as the insert.
-  const materials = validateMaterials(req.body && req.body.materials);
+  const materials = validateMaterials(body.materials);
   // Stock is an admin asset: a master may file a work log but must not move it.
   if (materials.length && !isSA(req.user)) {
     return res.status(403).json({ error: 'Ombordan mahsulot sarflash faqat admin uchun' });
   }
-  const isPublic = isSA(req.user) ? (req.body.is_public ? 1 : 0) : 0;
+  const isPublic = isSA(req.user) ? (body.is_public ? 1 : 0) : 0;
+  const completedAt = v.status === 'Tugallangan' ? nowSql() : null;
 
   // The work log and its stock movements share one transaction. Without it, a
   // short second material would leave a work log recorded with no oil taken, or
@@ -449,14 +642,20 @@ router.post('/', async (req, res) => {
     // RETURNING id replaces SQLite's last_insert_rowid().
     const work = await t
       .prepare(`INSERT INTO work_logs
-        (master_id, title, customer_name, customer_phone, car_brand, car_model, car_number,
-         service_type, description, start_date, end_date, scheduled_time, price, currency, status, notes, is_public)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (master_id, customer_id, vehicle_id, title, customer_name, customer_phone, car_brand,
+         car_model, car_number, service_type, description, diagnosis, start_date, end_date,
+         scheduled_time, parts_cost, labor_cost, price, currency, status, payment_status,
+         paid_amount, payment_method, completed_at, notes, is_public, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING id`)
       .one(
-        masterId, v.title, v.customer_name, v.customer_phone, v.car_brand, v.car_model, v.car_number,
-        v.service_type, v.description, v.start_date, v.end_date, v.scheduled_time, v.price, v.currency, v.status, v.notes, isPublic
+        masterId, rel.customer_id, rel.vehicle_id, v.title, v.customer_name, v.customer_phone,
+        v.car_brand, v.car_model, v.car_number, v.service_type, v.description, v.diagnosis,
+        v.start_date, v.end_date, v.scheduled_time, v.parts_cost, v.labor_cost, v.price,
+        v.currency, v.status, payment.payment_status, payment.paid_amount, payment.payment_method,
+        completedAt, v.notes, isPublic, req.user.id
       );
+    await recordStatus(t, work.id, '', v.status, req, 'Ish yaratildi');
     await consumeMaterials(t, req, work.id, materials);
     return work;
   });
@@ -490,6 +689,7 @@ router.get('/:id', async (req, res) => {
   if (!canAccess(req, work)) return res.status(403).json({ error: 'Forbidden: insufficient permissions' });
   const decorated = await decorate(work);
   decorated.materials = (await materialsFor([work.id])).get(work.id) || [];
+  decorated.status_history = await statusHistoryFor(work.id);
   res.json({ work: decorated });
 });
 
@@ -508,7 +708,15 @@ router.patch('/:id/status', async (req, res) => {
       error: `"${work.status}" holatidan "${next}" holatiga o'tib bo'lmaydi`,
     });
   }
-  await db.prepare('UPDATE work_logs SET status = ?, updated_at = app_now() WHERE id = ?').run(next, work.id);
+  await db.transaction(async (t) => {
+    await t
+      .prepare(`UPDATE work_logs SET status = ?,
+        completed_at = CASE WHEN ? = 'Tugallangan' THEN COALESCE(completed_at, app_now()) ELSE completed_at END,
+        updated_at = app_now() WHERE id = ?`)
+      .run(next, next, work.id);
+    await recordStatus(t, work.id, work.status, next, req);
+  });
+  await syncAppointmentStatus(work.appointment_id, next);
   res.json({ work: await decorate(await loadWork(work.id)) });
 });
 
@@ -523,21 +731,37 @@ router.put('/:id', async (req, res) => {
   }
   const v = validateWorkBody(b, work.service_type, await serviceTypeCatalog());
   if (v.error) return res.status(400).json({ error: v.error });
+  const rel = await resolveWorkRelations(b, v, work);
+  let payment;
+  try {
+    payment = validatePayment(b, work, v.price, isSA(req.user));
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.message });
+  }
   const isPublic = 'is_public' in b ? toFlag(b.is_public) : currentPublic;
+  const completedAt = v.status === 'Tugallangan' ? (work.completed_at || nowSql()) : work.completed_at;
   // Must be awaited: the response body is re-read from the database right after,
   // so an unawaited write would return the previous values.
-  await db.prepare(`UPDATE work_logs SET
-      title = ?, customer_name = ?, customer_phone = ?, car_brand = ?, car_model = ?, car_number = ?,
-      service_type = ?, description = ?, start_date = ?, end_date = ?, scheduled_time = ?,
-      price = ?, currency = ?, status = ?, notes = ?,
-      is_public = ?, updated_at = app_now()
-    WHERE id = ?`)
-    .run(
-      v.title, v.customer_name, v.customer_phone, v.car_brand, v.car_model, v.car_number,
-      v.service_type, v.description, v.start_date, v.end_date, v.scheduled_time,
-      v.price, v.currency, v.status, v.notes,
-      isPublic, work.id
-    );
+  await db.transaction(async (t) => {
+    await t.prepare(`UPDATE work_logs SET
+        title = ?, customer_id = ?, vehicle_id = ?, customer_name = ?, customer_phone = ?,
+        car_brand = ?, car_model = ?, car_number = ?, service_type = ?, description = ?,
+        diagnosis = ?, start_date = ?, end_date = ?, scheduled_time = ?, parts_cost = ?,
+        labor_cost = ?, price = ?, currency = ?, status = ?, payment_status = ?, paid_amount = ?,
+        payment_method = ?, completed_at = ?, notes = ?, is_public = ?, updated_at = app_now()
+      WHERE id = ?`)
+      .run(
+        v.title, rel.customer_id, rel.vehicle_id, v.customer_name, v.customer_phone,
+        v.car_brand, v.car_model, v.car_number, v.service_type, v.description, v.diagnosis,
+        v.start_date, v.end_date, v.scheduled_time, v.parts_cost, v.labor_cost, v.price,
+        v.currency, v.status, payment.payment_status, payment.paid_amount, payment.payment_method,
+        completedAt, v.notes, isPublic, work.id
+      );
+    if (v.status !== work.status) {
+      await recordStatus(t, work.id, work.status, v.status, req);
+    }
+  });
+  if (v.status !== work.status) await syncAppointmentStatus(work.appointment_id, v.status);
   res.json({ work: await decorate(await loadWork(work.id)) });
 });
 
