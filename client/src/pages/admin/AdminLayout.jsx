@@ -9,6 +9,7 @@ const NAV = [
   { to: '/admin/worklogs', icon: 'document', label: 'Bajarilgan ish' },
   { to: '/admin/debts', icon: 'money', label: 'Qarz daftar' },
   { to: '/admin/queue', icon: 'clock', label: 'Navbatlar ro\'yxati' },
+  { to: '/admin/settings', icon: 'settings', label: 'Sayt sozlamalari' },
 ];
 
 export default function AdminLayout() {
