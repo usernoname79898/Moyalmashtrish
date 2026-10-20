@@ -14,16 +14,33 @@ function fmt(c, currency = DEFAULT_CURRENCY) {
   return formatMoney(c, currency);
 }
 
-export default function WorkLogs() {
+export default function WorkLogs({ lockedStatus }) {
   const { user } = useAdmin();
   const isSA = user.role === 'super_admin';
+
+  const pageTitle =
+    lockedStatus === 'Jarayonda'
+      ? "Navbatlar ro'yxati"
+      : lockedStatus === 'Tugallangan'
+        ? 'Bajarilgan ish'
+        : isSA
+          ? 'Barcha bajarilgan ishlar'
+          : 'Mening ishlarim';
+  const pageHint =
+    lockedStatus === 'Jarayonda'
+      ? "Hozir jarayonda bo'lgan ishlar navbati."
+      : lockedStatus === 'Tugallangan'
+        ? 'Tugallangan ishlar, rasmlari va statistika.'
+        : isSA
+          ? 'Barcha ustalarning bajargan ishlari, rasmlari va statistika.'
+          : 'Bajargan ishlaringizni yozib boring, natijalarni kuzating.';
 
   const [worklogs, setWorklogs] = useState(null);
   const [stats, setStats] = useState(null);
   const [masters, setMasters] = useState([]);
   const [publicShow, setPublicShow] = useState(false);
   const [error, setError] = useState('');
-  const [filters, setFilters] = useState({ q: '', service_type: '', status: '', date_from: '', date_to: '', master_id: '' });
+  const [filters, setFilters] = useState({ q: '', service_type: '', status: lockedStatus || '', date_from: '', date_to: '', master_id: '' });
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -110,12 +127,8 @@ export default function WorkLogs() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold">{isSA ? 'Barcha bajarilgan ishlar' : 'Mening ishlarim'}</h1>
-          <p className="mt-1 text-sm text-white/50">
-            {isSA
-              ? 'Barcha ustalarning bajargan ishlari, rasmlari va statistika.'
-              : 'Bajargan ishlaringizni yozib boring, natijalarni kuzating.'}
-          </p>
+          <h1 className="text-2xl font-extrabold">{pageTitle}</h1>
+          <p className="mt-1 text-sm text-white/50">{pageHint}</p>
         </div>
         <div className="flex items-center gap-3">
           {isSA && (
@@ -155,13 +168,15 @@ export default function WorkLogs() {
             ))}
           </select>
         </div>
-        <div>
-          <label className="label">Holat</label>
-          <select className="field" value={filters.status} onChange={(e) => setFilter('status', e.target.value)}>
-            <option value="" className="bg-[#111725]">Barchasi</option>
-            {STATUSES.map((s) => <option key={s} value={s} className="bg-[#111725]">{s}</option>)}
-          </select>
-        </div>
+        {!lockedStatus && (
+          <div>
+            <label className="label">Holat</label>
+            <select className="field" value={filters.status} onChange={(e) => setFilter('status', e.target.value)}>
+              <option value="" className="bg-[#111725]">Barchasi</option>
+              {STATUSES.map((s) => <option key={s} value={s} className="bg-[#111725]">{s}</option>)}
+            </select>
+          </div>
+        )}
         <div>
           <label className="label">Boshlanish sanasi</label>
           <input type="date" className="field" value={filters.date_from} onChange={(e) => setFilter('date_from', e.target.value)} />
@@ -208,6 +223,7 @@ export default function WorkLogs() {
         <WorkForm
           isSA={isSA}
           initial={editing}
+          defaultStatus={lockedStatus}
           masters={masters}
           onClose={() => setEditing(null)}
           onSaved={async () => { setEditing(null); await Promise.all([loadList(), loadStats()]); }}
@@ -304,9 +320,9 @@ const EMPTY_FORM = {
   notes: '', is_public: false, master_id: '', currency: DEFAULT_CURRENCY,
 };
 
-function WorkForm({ isSA, initial, masters, onClose, onSaved }) {
+function WorkForm({ isSA, initial, defaultStatus, masters, onClose, onSaved }) {
   const isEdit = !!initial.id;
-  const [form, setForm] = useState({ ...EMPTY_FORM, master_id: masters.length ? masters[0].id : '', ...initial, is_public: !!initial.is_public });
+  const [form, setForm] = useState({ ...EMPTY_FORM, status: defaultStatus || EMPTY_FORM.status, master_id: masters.length ? masters[0].id : '', ...initial, is_public: !!initial.is_public });
   // Fresh on every open: an admin who has just added "Mator Ochish" on
   // /admin/services expects this modal to offer it on the next open. No fallback
   // on purpose -- while the request is in flight the select says so, instead of

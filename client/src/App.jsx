@@ -1,19 +1,10 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Home from './pages/Home';
 import ServiceDetail from './pages/ServiceDetail';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminLogin from './pages/admin/AdminLogin';
-import Dashboard from './pages/admin/Dashboard';
-import ServicesAdmin from './pages/admin/ServicesAdmin';
-import SettingsPage from './pages/admin/SettingsPage';
-import SectionPage from './pages/admin/SectionPage';
-import UsersAdmin from './pages/admin/UsersAdmin';
-import ApplicationsAdmin from './pages/admin/ApplicationsAdmin';
 import WorkLogs from './pages/admin/WorkLogs';
 import DebtLedger from './pages/admin/DebtLedger';
-import Expenses from './pages/admin/Expenses';
-import Inventory from './pages/admin/Inventory';
-import MediaAdmin from './pages/admin/MediaAdmin';
 import ProtectedRoute from './pages/admin/ProtectedRoute';
 
 export default function App() {
@@ -30,21 +21,10 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Dashboard />} />
-        <Route path="services" element={<ServicesAdmin />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="hero" element={<SectionPage section="hero" title="Hero (Bosh sahifa)" />} />
-        <Route path="about" element={<SectionPage section="about" title="Biz haqimizda" />} />
-        <Route path="contact" element={<SectionPage section="contact" title="Aloqa ma'lumotlari" />} />
-        <Route path="footer" element={<SectionPage section="footer" title="Footer sozlamalari" />} />
-        <Route path="design" element={<SectionPage section="design" title="Dizayn sozlamalari" />} />
-        <Route path="users" element={<UsersAdmin />} />
-        <Route path="applications" element={<ApplicationsAdmin />} />
-        <Route path="worklogs" element={<WorkLogs />} />
+        <Route index element={<Navigate to="worklogs" replace />} />
+        <Route path="worklogs" element={<WorkLogs lockedStatus="Tugallangan" />} />
         <Route path="debts" element={<DebtLedger />} />
-        <Route path="expenses" element={<Expenses />} />
-        <Route path="inventory" element={<Inventory />} />
-        <Route path="media" element={<MediaAdmin />} />
+        <Route path="queue" element={<WorkLogs lockedStatus="Jarayonda" />} />
       </Route>
       <Route path="*" element={<Home />} />
     </Routes>

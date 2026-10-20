@@ -6,21 +6,9 @@ import Icon from '../../components/icons';
 import { Spinner, Modal, Alert } from '../../components/ui';
 
 const NAV = [
-  { to: '/admin', end: true, icon: 'dashboard', label: 'Dashboard' },
-  { to: '/admin/services', icon: 'wrench', label: 'Xizmatlar' },
-  { to: '/admin/settings', icon: 'settings', label: 'Sayt sozlamalari' },
-  { to: '/admin/hero', icon: 'spark', label: 'Hero bo\'limi' },
-  { to: '/admin/about', icon: 'heart', label: 'Biz haqimizda' },
-  { to: '/admin/contact', icon: 'pin', label: 'Aloqa ma\'lumotlari' },
-  { to: '/admin/footer', icon: 'layout', label: 'Footer' },
-  { to: '/admin/design', icon: 'eye', label: 'Dizayn' },
-  { to: '/admin/applications', icon: 'document', label: 'Usta arizalari', adminOnly: true },
-  { to: '/admin/users', icon: 'user', label: 'Ustalar', adminOnly: true },
-  { to: '/admin/worklogs', icon: 'document', label: 'Bajarilgan ishlar' },
-  { to: '/admin/debts', icon: 'money', label: 'Qarz daftari' },
-  { to: '/admin/expenses', icon: 'box', label: 'Moy hisob-kitob', adminOnly: true },
-  { to: '/admin/inventory', icon: 'oil', label: 'Moy va filtrlar' },
-  { to: '/admin/media', icon: 'image', label: 'Media / Rasmlar' },
+  { to: '/admin/worklogs', icon: 'document', label: 'Bajarilgan ish' },
+  { to: '/admin/debts', icon: 'money', label: 'Qarz daftar' },
+  { to: '/admin/queue', icon: 'clock', label: 'Navbatlar ro\'yxati' },
 ];
 
 export default function AdminLayout() {
