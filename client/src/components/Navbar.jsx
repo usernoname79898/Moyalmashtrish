@@ -30,10 +30,10 @@ export default function Navbar() {
             <img src={site.logo} alt={site.name} className="h-10 w-10 rounded-xl object-cover ring-1 ring-white/10" />
           ) : (
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgb(var(--c-primary))] text-white shadow-lg shadow-[rgb(var(--c-primary))/35] transition-transform duration-200 group-hover:scale-105">
-              <Icon name="wrench" size={20} />
+              <Icon name="bolt" size={20} />
             </span>
           )}
-          <span className="text-lg font-extrabold tracking-tight text-white">{site.name || 'AvtoServis'}</span>
+          <span className="text-lg font-extrabold tracking-tight text-white">{site.name || 'Amper Avto Elektro'}</span>
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex">

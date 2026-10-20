@@ -1,6 +1,6 @@
-# AvtoServis API Documentation
+# Amper Avto Elektro API Documentation
 
-REST API for the AvtoServis auto-service platform (React SPA + Express + PostgreSQL).
+REST API for the Amper Avto Elektro auto-electrical workshop (React SPA + Express + PostgreSQL).
 
 This document was written from the server source code in `server/src/**` and
 `server/migrations/*.sql`. Every endpoint, field, status code and error message
@@ -302,7 +302,7 @@ for already-initialized sites without a migration.
 Active services only, in catalogue order (`sort_order, id`):
 
 ```json
-{ "services": [ { "id": 3, "name": "Mator", "description": "…", "benefits": "…",
+{ "services": [ { "id": 3, "name": "Elektrodiagnostika", "description": "…", "benefits": "…",
                   "image": "…", "icon": "wrench", "price": "50 000 so'm" } ] }
 ```
 
@@ -325,7 +325,7 @@ When enabled, only rows with `is_public = 1` **and** `status = 'Tugallangan'`:
 
 ```json
 { "enabled": true, "worklogs": [
-  { "id": 12, "title": "…", "service_type": "Mator", "car_brand": "Chevrolet",
+  { "id": 12, "title": "…", "service_type": "Elektrodiagnostika", "car_brand": "Chevrolet",
     "car_model": "Nexia", "description": "…", "created_at": "…",
     "master_name": "…", "images": [ { "id": 4, "image_path": "w-…-1.jpg" } ] } ] }
 ```
@@ -485,7 +485,7 @@ debt form.
 Service object (all columns):
 
 ```json
-{ "id": 1, "name": "Mator", "description": "…", "benefits": "…",
+{ "id": 1, "name": "Elektrodiagnostika", "description": "…", "benefits": "…",
   "image": "https://…/services/….jpg", "icon": "wrench",
   "price": "…", "sort_order": 1, "is_active": 1,
   "created_at": "2026-01-05 09:14:02" }
@@ -507,7 +507,7 @@ Notes:
 Any authenticated user; **active services only**:
 
 ```json
-{ "services": [ { "id": 1, "name": "Mator", "icon": "wrench", "sort_order": 1 } ] }
+{ "services": [ { "id": 1, "name": "Elektrodiagnostika", "icon": "wrench", "sort_order": 1 } ] }
 ```
 
 This is the endpoint the mobile/web "Xizmat turi" dropdown must use — the list is
@@ -522,7 +522,7 @@ See §6.3–6.4 (active services, fewer fields).
 ## 10. Work-log API (`/api/admin/worklogs`)
 
 Requires a session. A `master` is scoped to their own rows; `super_admin` sees
-all. The list endpoint is **not paginated**.
+all. The list endpoint is **not paginated** unless `page` or `per_page` is supplied.
 
 ### 10.1 Work log object
 
@@ -530,9 +530,10 @@ all. The list endpoint is **not paginated**.
 { "id": 12, "master_id": 2, "master_name": "…",
   "title": "Konditsioner ta'miri", "customer_name": "…", "customer_phone": "+998…",
   "car_brand": "Chevrolet", "car_model": "Nexia", "car_number": "01A123BC",
-  "service_type": "Mator", "description": "…",
+  "service_type": "Elektrodiagnostika", "description": "…",
   "start_date": "2026-10-01", "end_date": "2026-10-03",
-  "price": 350000, "currency": "UZS", "status": "Jarayonda",
+  "scheduled_time": "09:30",
+  "price": 350000, "currency": "UZS", "status": "Kutilayotgan",
   "is_public": 0, "notes": "…",
   "created_at": "2026-10-01 10:12:44", "updated_at": "2026-10-03 18:02:10",
   "images": [ { "id": 4, "image_path": "w-…-1.jpg", "original_filename": "a.jpg" } ],
@@ -542,8 +543,9 @@ all. The list endpoint is **not paginated**.
                    "viscosity": "5W-30", "unit": "liter" } ] }
 ```
 
-- `status`: `Jarayonda` | `Tugallangan` (only these two).
+- `status`: `Kutilayotgan` | `Jarayonda` | `Tugallangan` | `Bekor qilingan`. New rows default to `Jarayonda`; the queue form sends `Kutilayotgan`.
 - `price`: number ≥ 0 (max `1e12`), labelled by `currency` (`UZS` default, or `USD`); see §4.3.
+- `scheduled_time`: optional `HH:MM` (24-hour) queue slot; `''` when unset.
 - `service_type`: must match a row in the `services` catalogue (see §10.5).
 - `is_public`: `0`/`1`, only `super_admin` may change it.
 
@@ -552,11 +554,12 @@ all. The list endpoint is **not paginated**.
 | Method | Path | Success | Description |
 |---|---|---|---|
 | GET | `/` | `{"worklogs":[…]}` | List, newest first |
-| GET | `/stats` | `{"stats":{total,completed,inProgress,earnings}}` | Aggregates (`earnings` is UZS-only; see §4.3) |
+| GET | `/stats` | `{"stats":{waiting,inProgress,completed,cancelled,total,earnings}}` | Aggregates (`earnings` is UZS-only; see §4.3) |
 | POST | `/` | `201 {"work":{…}}` | Create |
 | GET | `/services` | `{"services":[…]}` | Picker catalogue (§9.2) |
 | GET | `/:id` | `{"work":{…}}` | Detail (includes `materials`) |
-| PUT | `/:id` | `{"work":{…}}` | Update |
+| PUT | `/:id` | `{"work":{…}}` | Update (unrestricted field editor) |
+| PATCH | `/:id/status` | `{"work":{…}}` | Lifecycle transition (see §10.6) |
 | DELETE | `/:id` | `{"ok":true}` | Delete (cascades images) |
 | POST | `/:id/images` | `201 {"images":[…]}` | Upload photos (multipart) |
 | DELETE | `/images/:imageId` | `{"ok":true,"images":[…]}` | Remove one photo |
@@ -568,19 +571,26 @@ all. The list endpoint is **not paginated**.
 
 | Param | Notes |
 |---|---|
-| `q` | Matches `title`, `customer_name`, `car_model`, `car_brand` |
+| `q` | Matches `title`, `customer_name`, `customer_phone`, `car_brand`, `car_model`, `car_number`, and the numeric work-log id |
 | `service_type` | Exact match |
-| `status` | Exact match (`Jarayonda` / `Tugallangan`) |
+| `status` | Exact match (`Kutilayotgan` / `Jarayonda` / `Tugallangan` / `Bekor qilingan`) |
 | `date_from`, `date_to` | `YYYY-MM-DD` on `created_at` |
 | `master_id` | **super_admin only**; a master's own rows are always filtered |
+| `page`, `per_page` | Opt-in pagination. Either one enables the envelope. `per_page` is clamped to 1–100 (default 8); `page` is clamped to the last page. Without either param the response stays `{"worklogs":[…]}` |
+
+Paginated response:
+
+```json
+{ "worklogs": [ … ], "pagination": { "page": 1, "per_page": 8, "total": 42, "pages": 6 } }
+```
 
 **Create body** (`POST /`)
 
 ```json
-{ "title": "…", "service_type": "Mator", "price": 350000, "status": "Jarayonda",
+{ "title": "…", "service_type": "Elektrodiagnostika", "price": 350000, "status": "Jarayonda",
   "customer_name": "…", "customer_phone": "…", "car_brand": "…", "car_model": "…",
   "car_number": "…", "description": "…", "start_date": "YYYY-MM-DD",
-  "end_date": "YYYY-MM-DD", "notes": "…",
+  "end_date": "YYYY-MM-DD", "scheduled_time": "HH:MM", "notes": "…",
   "master_id": 2, "is_public": false,
   "materials": [ { "product_id": 3, "quantity": 4.5, "note": "…" } ] }
 ```
@@ -623,8 +633,8 @@ files: <file>, <file>, …            (field name is "files", up to 10)
 
 | Status | `error` |
 |---|---|
-| 400 | `Ish nomi kiritilishi shart`, `Ish nomi juda uzun`, `Ish holati noto'g'ri`, `Narx noto'g'ri`, `Xizmat turi noto'g'ri` |
-| 400 | `Xizmat turi noto'g'ri: "Mator xodovoy" endi Mator va Xodovoy deb ikkiga ajratildi` |
+| 400 | `Ish nomi kiritilishi shart`, `Ish nomi juda uzun`, `Ish holati noto'g'ri`, `Navbat vaqti noto'g'ri (HH:MM)`, `Narx noto'g'ri`, `Xizmat turi noto'g'ri` |
+| 400 | `Xizmat turi noto'g'ri: "Mator xodovoy" eski katalogdan qolgan va endi ishlatilmaydi. Katalogdan xizmatni tanlang.` |
 | 400 | `Xizmat turi faol emas: "<nomi>"` |
 | 403 | `Faqat super admin saytda ko'rsatishni sozlashi mumkin` (changing `is_public`) |
 | 403 | `Forbidden: insufficient permissions` |
@@ -632,14 +642,32 @@ files: <file>, <file>, …            (field name is "files", up to 10)
 ### 10.5 `service_type` resolution rules
 
 1. Exact match against `services.name` → stored with the catalogue's spelling.
-2. Case/space-insensitive match (so a hand-typed `"mator"` works).
-3. Unchanged value on PUT is always accepted — even the retired
-   `"Mator xodovoy"` — so old rows stay editable.
+2. Case/space-insensitive match (so a hand-typed `"elektrodiagnostika"` works).
+3. Unchanged value on PUT is always accepted — even a retired label from the
+   previous catalogue — so old rows stay editable.
 4. A changed value that matches nothing → `400 Xizmat turi noto'g'ri`.
-5. The legacy combined value as a *new* value → the explicit split message above.
+5. A retired legacy label as a *new* value → the explicit catalogue message above.
 
 `work_logs.service_type` stores a **text value**, not an id. When a service is
 renamed, existing work logs keep the old spelling.
+
+### 10.6 Queue lifecycle (`PATCH /:id/status`)
+
+Body: `{ "status": "Jarayonda" }`.
+
+| From | Allowed to |
+|---|---|
+| `Kutilayotgan` | `Jarayonda`, `Bekor qilingan` |
+| `Jarayonda` | `Tugallangan`, `Bekor qilingan` |
+| `Tugallangan` | — (terminal) |
+| `Bekor qilingan` | — (terminal) |
+
+- `409 Ish holati allaqachon shunday` when the target equals the current status.
+- `409 Ish holatini bunday o'zgartirib bo'lmaydi` for a forbidden transition.
+- `400 Ish holati noto'g'ri` for an unknown status.
+- `PUT /:id` remains unrestricted so legacy data stays editable; use PATCH for the
+  visible lifecycle actions.
+- Cancelling is a status change, not a delete — the row and its photos remain.
 
 ---
 
@@ -789,7 +817,7 @@ Additional gates: `DELETE /:id` and `POST /:id/purge` need the delete pass key;
 
 ```json
 { "id": 5, "full_name": "Alisher Nazarov", "phone": "+998901234567",
-  "service": "Mator", "description": "…",
+  "service": "Elektrodiagnostika", "description": "…",
   "debt_amount": 500000, "paid_amount": 200000, "remaining_amount": 300000,
   "currency": "UZS",
   "status": "partially_paid", "status_label": "Qisman to'langan",
@@ -839,7 +867,7 @@ Exports honour the same `filter`/`sort`/`q` (pagination is ignored).
 **POST `/`**
 
 ```json
-{ "full_name": "…", "phone": "+998901234567", "service": "Mator",
+{ "full_name": "…", "phone": "+998901234567", "service": "Elektrodiagnostika",
   "description": "…", "debt_amount": 500000, "paid_amount": 0,
   "currency": "UZS" }
 ```
@@ -1042,7 +1070,7 @@ curl "$BASE/api/admin/worklogs" -H "Authorization: Bearer $TOKEN"
 curl -b jar.txt -X POST "$BASE/api/admin/debts" \
   -H 'Content-Type: application/json' \
   -d '{"full_name":"Alisher Nazarov","phone":"+998901234567",
-       "service":"Mator","debt_amount":500000,"paid_amount":100000}'
+       "service":"Elektrodiagnostika","debt_amount":500000,"paid_amount":100000}'
 
 curl -b jar.txt -X POST "$BASE/api/admin/debts/5/payments" \
   -H 'Content-Type: application/json' \
@@ -1151,7 +1179,7 @@ data = s.get(f"{BASE}/admin/worklogs", headers=headers).json()
 | Dashboard | `GET /api/admin/dashboard`, `GET /api/admin/worklogs/stats`, `GET /api/admin/debts/stats`, `GET /api/admin/inventory/stats` |
 | Services catalogue | `GET /api/admin/worklogs/services` (picker), `GET /api/admin/services` (edit) |
 | Work log list / detail | `GET /api/admin/worklogs`, `GET /api/admin/worklogs/:id` |
-| Create / edit work log | `POST /api/admin/worklogs`, `PUT /api/admin/worklogs/:id` |
+| Create / edit work log | `POST /api/admin/worklogs`, `PUT /api/admin/worklogs/:id`, `PATCH /api/admin/worklogs/:id/status` |
 | Work photos | `POST /api/admin/worklogs/:id/images`, `DELETE /api/admin/worklogs/images/:imageId`, `GET /api/workimages/:filename` |
 | Inventory | `GET/POST/PATCH/DELETE /api/admin/inventory/products…`, `POST …/stock-in\|consume\|adjust`, `GET …/movements` |
 | Debt ledger | `GET/POST /api/admin/debts`, `PATCH /:id`, `POST /:id/payments`, `POST /:id/mark-paid`, `DELETE /:id` |
@@ -1357,43 +1385,44 @@ Legend: 🔓 public · 🔑 session · 👑 `super_admin` · 📝 permission (`c
 | 40 | GET | `/api/admin/worklogs/services` | 🔑 | Service picker |
 | 41 | GET | `/api/admin/worklogs/:id` | 🔑 | Work-log detail |
 | 42 | PUT | `/api/admin/worklogs/:id` | 🔑 | Update work log |
-| 43 | DELETE | `/api/admin/worklogs/:id` | 🔑 | Delete work log |
-| 44 | POST | `/api/admin/worklogs/:id/images` | 🔑 | Upload work photos |
-| 45 | DELETE | `/api/admin/worklogs/images/:imageId` | 🔑 | Delete a work photo |
-| 46 | GET | `/api/admin/debts` | 🔑 | Debt list |
-| 47 | POST | `/api/admin/debts` | 🔑 | Create a debt |
-| 48 | GET | `/api/admin/debts/stats` | 🔑 | Debt stats |
-| 49 | GET | `/api/admin/debts/export.csv` | 🔑 | CSV export |
-| 50 | GET | `/api/admin/debts/export.xlsx` | 🔑 | Excel export |
-| 51 | GET | `/api/admin/debts/:id` | 🔑 | Debt detail |
-| 52 | PATCH | `/api/admin/debts/:id` | 🔑 | Edit a debt |
-| 53 | POST | `/api/admin/debts/:id/payments` | 🔑 | Add a payment |
-| 54 | POST | `/api/admin/debts/:id/mark-paid` | 🔑 | Settle fully |
-| 55 | DELETE | `/api/admin/debts/:id` | 🔑+pass key | Archive a debt |
-| 56 | POST | `/api/admin/debts/:id/purge` | 👑+pass key | Permanently delete |
-| 57 | GET | `/api/admin/inventory/stats` | 👑 | Warehouse stats |
-| 58 | GET | `/api/admin/inventory/low-stock` | 👑 | Low-stock list |
-| 59 | GET | `/api/admin/inventory/products` | 👑 | Product list |
-| 60 | POST | `/api/admin/inventory/products` | 👑 | Create product |
-| 61 | POST | `/api/admin/inventory/products/bulk` | 👑 | Bulk create (≤20) |
-| 62 | GET | `/api/admin/inventory/products/:id` | 👑 | Product detail |
-| 63 | PATCH | `/api/admin/inventory/products/:id` | 👑 | Update product |
-| 64 | DELETE | `/api/admin/inventory/products/:id` | 👑 | Delete product |
-| 65 | POST | `/api/admin/inventory/products/:id/stock-in` | 👑 | Stock in |
-| 66 | POST | `/api/admin/inventory/products/:id/consume` | 👑 | Consume |
-| 67 | POST | `/api/admin/inventory/products/:id/adjust` | 👑 | Stock take |
-| 68 | GET | `/api/admin/inventory/movements` | 👑 | Movement history |
-| 69 | GET | `/api/admin/inventory/export.csv` | 👑 | Product CSV |
-| 70 | GET | `/api/admin/inventory/movements/export.csv` | 👑 | Movement CSV |
-| 71 | GET | `/api/admin/expenses` | 👑 | Expense list |
-| 72 | POST | `/api/admin/expenses` | 👑 | Create an expense |
-| 73 | GET | `/api/admin/expenses/stats` | 👑 | Per-currency expense stats |
-| 74 | GET | `/api/admin/expenses/export.csv` | 👑 | Expense CSV export |
-| 75 | GET | `/api/admin/expenses/:id` | 👑 | Expense detail |
-| 76 | PATCH | `/api/admin/expenses/:id` | 👑 | Edit an expense |
-| 77 | POST | `/api/admin/expenses/:id/payments` | 👑 | Add a payment |
-| 78 | POST | `/api/admin/expenses/:id/payments/:paymentId/void` | 👑 | Void a payment |
-| 79 | POST | `/api/admin/expenses/:id/mark-paid` | 👑 | Settle fully |
-| 80 | DELETE | `/api/admin/expenses/:id` | 👑+pass key | Archive an expense |
+| 43 | PATCH | `/api/admin/worklogs/:id/status` | 🔑 | Queue lifecycle transition |
+| 44 | DELETE | `/api/admin/worklogs/:id` | 🔑 | Delete work log |
+| 45 | POST | `/api/admin/worklogs/:id/images` | 🔑 | Upload work photos |
+| 46 | DELETE | `/api/admin/worklogs/images/:imageId` | 🔑 | Delete a work photo |
+| 47 | GET | `/api/admin/debts` | 🔑 | Debt list |
+| 48 | POST | `/api/admin/debts` | 🔑 | Create a debt |
+| 49 | GET | `/api/admin/debts/stats` | 🔑 | Debt stats |
+| 50 | GET | `/api/admin/debts/export.csv` | 🔑 | CSV export |
+| 51 | GET | `/api/admin/debts/export.xlsx` | 🔑 | Excel export |
+| 52 | GET | `/api/admin/debts/:id` | 🔑 | Debt detail |
+| 53 | PATCH | `/api/admin/debts/:id` | 🔑 | Edit a debt |
+| 54 | POST | `/api/admin/debts/:id/payments` | 🔑 | Add a payment |
+| 55 | POST | `/api/admin/debts/:id/mark-paid` | 🔑 | Settle fully |
+| 56 | DELETE | `/api/admin/debts/:id` | 🔑+pass key | Archive a debt |
+| 57 | POST | `/api/admin/debts/:id/purge` | 👑+pass key | Permanently delete |
+| 58 | GET | `/api/admin/inventory/stats` | 👑 | Warehouse stats |
+| 59 | GET | `/api/admin/inventory/low-stock` | 👑 | Low-stock list |
+| 60 | GET | `/api/admin/inventory/products` | 👑 | Product list |
+| 61 | POST | `/api/admin/inventory/products` | 👑 | Create product |
+| 62 | POST | `/api/admin/inventory/products/bulk` | 👑 | Bulk create (≤20) |
+| 63 | GET | `/api/admin/inventory/products/:id` | 👑 | Product detail |
+| 64 | PATCH | `/api/admin/inventory/products/:id` | 👑 | Update product |
+| 65 | DELETE | `/api/admin/inventory/products/:id` | 👑 | Delete product |
+| 66 | POST | `/api/admin/inventory/products/:id/stock-in` | 👑 | Stock in |
+| 67 | POST | `/api/admin/inventory/products/:id/consume` | 👑 | Consume |
+| 68 | POST | `/api/admin/inventory/products/:id/adjust` | 👑 | Stock take |
+| 69 | GET | `/api/admin/inventory/movements` | 👑 | Movement history |
+| 70 | GET | `/api/admin/inventory/export.csv` | 👑 | Product CSV |
+| 71 | GET | `/api/admin/inventory/movements/export.csv` | 👑 | Movement CSV |
+| 72 | GET | `/api/admin/expenses` | 👑 | Expense list |
+| 73 | POST | `/api/admin/expenses` | 👑 | Create an expense |
+| 74 | GET | `/api/admin/expenses/stats` | 👑 | Per-currency expense stats |
+| 75 | GET | `/api/admin/expenses/export.csv` | 👑 | Expense CSV export |
+| 76 | GET | `/api/admin/expenses/:id` | 👑 | Expense detail |
+| 77 | PATCH | `/api/admin/expenses/:id` | 👑 | Edit an expense |
+| 78 | POST | `/api/admin/expenses/:id/payments` | 👑 | Add a payment |
+| 79 | POST | `/api/admin/expenses/:id/payments/:paymentId/void` | 👑 | Void a payment |
+| 80 | POST | `/api/admin/expenses/:id/mark-paid` | 👑 | Settle fully |
+| 81 | DELETE | `/api/admin/expenses/:id` | 👑+pass key | Archive an expense |
 
 Any other `/api/*` path → `404 { "error": "API route not found" }`.

@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
-  title: AvtoServis API
+  title: Amper Avto Elektro API
   description: |
-    REST API for the AvtoServis auto-service platform (React SPA + Express + PostgreSQL).
+    REST API for the Amper Avto Elektro auto-electrical workshop (React SPA + Express + PostgreSQL).
 
     Generated from the server source in `server/src/**` and `server/migrations/*.sql`.
     Every path, field and status code below exists in the code.
@@ -33,7 +33,7 @@ info:
     whole numbers).
   version: 1.0.0
   contact:
-    name: AvtoServis
+    name: Amper Avto Elektro
 servers:
   - url: https://amper.uz
     description: Production
@@ -95,7 +95,7 @@ paths:
                     type: object
                     additionalProperties: true
                     example:
-                      site: { name: AvtoServis }
+                      site: { name: Amper Avto Elektro }
                       worklog: { public_show: false }
         '503': { $ref: '#/components/responses/DatabaseNotReady' }
 
@@ -1036,18 +1036,20 @@ paths:
       tags: [Worklogs]
       summary: Work-log list
       description: |
-        Not paginated. A `master` only sees their own rows; a `super_admin` sees all.
+        Unpaginated by default. Send `page` and/or `per_page` to receive a
+        `pagination` envelope alongside the rows. A `master` only sees their own
+        rows; a `super_admin` sees all.
       parameters:
         - name: q
           in: query
           schema: { type: string }
-          description: Matches title, customer name, car model, car brand
+          description: Matches title, customer name, phone, car brand/model/number, and id
         - name: service_type
           in: query
           schema: { type: string }
         - name: status
           in: query
-          schema: { type: string, enum: [Jarayonda, Tugallangan] }
+          schema: { type: string, enum: [Kutilayotgan, Jarayonda, Tugallangan, Bekor qilingan] }
         - name: date_from
           in: query
           schema: { type: string, format: date }
@@ -1058,6 +1060,13 @@ paths:
           in: query
           schema: { type: integer }
           description: Super admin only
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+          description: Enables pagination when supplied with `per_page`
+        - name: per_page
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 8 }
       responses:
         '200':
           description: Work logs (each with `images` and `materials`)
@@ -1069,6 +1078,14 @@ paths:
                   worklogs:
                     type: array
                     items: { $ref: '#/components/schemas/WorkLog' }
+                  pagination:
+                    type: object
+                    description: Present only when `page` or `per_page` was sent
+                    properties:
+                      page: { type: integer }
+                      per_page: { type: integer }
+                      total: { type: integer }
+                      pages: { type: integer }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '503': { $ref: '#/components/responses/DatabaseNotReady' }
     post:
@@ -1185,8 +1202,9 @@ paths:
       summary: Update a work log
       description: |
         Omitted fields keep their stored values. An unchanged `service_type` is
-        always accepted (even the retired `Mator xodovoy`); a changed one must
-        resolve to an active catalogue service. Only a super admin may change `is_public`.
+        always accepted (even a retired label from the previous catalogue); a
+        changed one must resolve to an active catalogue service. Only a super admin
+        may change `is_public`.
       parameters:
         - $ref: '#/components/parameters/PathId'
       requestBody:
@@ -1227,6 +1245,50 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404':
           description: Work log not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/worklogs/{id}/status:
+    patch:
+      tags: [Worklogs]
+      summary: Move a work log through the queue lifecycle
+      description: |
+        Allowed transitions: `Kutilayotgan` -> `Jarayonda` or `Bekor qilingan`;
+        `Jarayonda` -> `Tugallangan` or `Bekor qilingan`. `Tugallangan` and
+        `Bekor qilingan` are terminal. The full `PUT` editor is not restricted.
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [Kutilayotgan, Jarayonda, Tugallangan, Bekor qilingan]
+      responses:
+        '200':
+          description: Updated status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  work: { $ref: '#/components/schemas/WorkLog' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Work log not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Invalid transition or already in that state
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -2700,8 +2762,12 @@ components:
         description: { type: string }
         start_date: { type: string }
         end_date: { type: string }
+        scheduled_time:
+          type: string
+          description: Optional HH:MM time-of-day for the queue slot
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
         price: { type: number }
-        status: { type: string, enum: [Jarayonda, Tugallangan] }
+        status: { type: string, enum: [Kutilayotgan, Jarayonda, Tugallangan, Bekor qilingan] }
         is_public: { type: integer, enum: [0, 1] }
         notes: { type: string }
         created_at: { type: string }
@@ -2721,7 +2787,7 @@ components:
         service_type:
           type: string
           description: Must match an active `services.name` when changed
-        status: { type: string, enum: [Jarayonda, Tugallangan], default: Jarayonda }
+        status: { type: string, enum: [Kutilayotgan, Jarayonda, Tugallangan, Bekor qilingan], default: Jarayonda }
         price: { type: number, minimum: 0, maximum: 1000000000000 }
         customer_name: { type: string, maxLength: 150 }
         customer_phone: { type: string, maxLength: 40 }
@@ -2731,6 +2797,10 @@ components:
         description: { type: string, maxLength: 5000 }
         start_date: { type: string }
         end_date: { type: string }
+        scheduled_time:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          description: Optional HH:MM time-of-day
         notes: { type: string, maxLength: 2000 }
         master_id:
           type: integer
@@ -2794,8 +2864,10 @@ components:
       type: object
       properties:
         total: { type: integer }
+        waiting: { type: integer }
         completed: { type: integer }
         inProgress: { type: integer }
+        cancelled: { type: integer }
         earnings: { type: number }
 
     DashboardStats:

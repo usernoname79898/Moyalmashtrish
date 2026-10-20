@@ -14,12 +14,12 @@ export default function Services({ showDetailModal = true }) {
 
   return (
     <section id="services" className="relative py-20 md:py-28">
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(60%_40%_at_50%_0%,rgba(225,29,46,0.08),transparent)]" />
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(60%_40%_at_50%_0%,rgba(7,156,240,0.08),transparent)]" />
       <div className="container-x">
         <SectionTitle
           eyebrow="Xizmatlarimiz"
-          title="Professional avto xizmatlar"
-          description="Avtomobilingiz uchun barcha kerakli xizmatlarni bitta joydan. Zamonaviy uskunalar va tajribali mutaxassislar."
+          title="Avtomobil elektr tizimlari xizmatlari"
+          description="Simlar, starter, generator, akkumulyator, yoritish va elektron tizimlarni bitta joydan tashxislash va ta'mirlash."
         />
 
         {services.length === 0 ? (

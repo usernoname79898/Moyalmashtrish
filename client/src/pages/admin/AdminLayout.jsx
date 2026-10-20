@@ -29,21 +29,21 @@ export default function AdminLayout() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-[#0b0f17] text-white lg:flex">
+    <div className="min-h-screen bg-[var(--admin-bg)] text-[var(--admin-text)] lg:flex lg:h-screen lg:overflow-hidden">
       {siteLoading && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b0f17]/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b0d16]/80 backdrop-blur-sm">
           <Spinner className="h-10 w-10" />
         </div>
       )}
 
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-white/5 bg-[#0e1420] transition-transform lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="relative flex h-16 items-center gap-2.5 border-b border-white/5 px-5">
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-[var(--admin-border)] bg-[var(--admin-sidebar)] transition-transform lg:static lg:h-full lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="relative flex h-16 items-center gap-2.5 border-b border-[var(--admin-border)] px-5">
           <span className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[rgb(var(--c-primary))]/60 to-transparent" aria-hidden="true" />
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[rgb(var(--c-primary))] to-[rgb(var(--c-secondary))] text-white shadow-lg shadow-[rgb(var(--c-primary))/25]">
-            <Icon name="wrench" size={18} />
+            <Icon name="bolt" size={18} />
           </span>
           <div>
-            <div className="text-sm font-extrabold leading-tight tracking-tight">Admin Panel</div>
+            <div className="text-sm font-extrabold leading-tight tracking-tight">Amper Admin</div>
             <div className="text-[11px] text-white/40">{user.role === 'super_admin' ? 'Super admin' : 'Usta'}</div>
           </div>
           <button type="button" className="ml-auto rounded-lg p-1.5 text-white/50 hover:bg-white/10 lg:hidden" onClick={() => setSidebarOpen(false)} aria-label="Yopish">
@@ -68,7 +68,7 @@ export default function AdminLayout() {
           ))}
         </nav>
 
-        <div className="border-t border-white/5 p-3 space-y-1">
+        <div className="border-t border-[var(--admin-border)] p-3 space-y-1">
           <button type="button" onClick={() => setPwdOpen(true)} className="flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium text-white/60 transition hover:bg-white/5 hover:text-white">
             <Icon name="lock" size={18} />
             Parolni o'zgartirish
@@ -82,8 +82,8 @@ export default function AdminLayout() {
 
       {sidebarOpen && <div className="fixed inset-0 z-30 bg-black/60 lg:hidden" onClick={() => setSidebarOpen(false)} />}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-white/5 bg-[#0b0f17]/90 px-4 backdrop-blur-lg sm:px-6">
+      <div className="flex min-w-0 flex-1 flex-col lg:h-full">
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-[var(--admin-border)] bg-[#0b0d16]/90 px-4 backdrop-blur-lg sm:px-6">
           <button type="button" className="rounded-lg p-2 text-white/70 hover:bg-white/10 lg:hidden" onClick={() => setSidebarOpen(true)} aria-label="Menyu">
             <Icon name="menu" size={20} />
           </button>
@@ -97,7 +97,7 @@ export default function AdminLayout() {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           <Outlet />
         </main>
       </div>

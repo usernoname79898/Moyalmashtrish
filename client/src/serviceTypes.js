@@ -5,7 +5,7 @@
  * `serviceCatalog.js` next door stays the bundled, JSX-free description of the
  * shop's baseline six -- what a first paint and a failed request fall back to.
  * This module is the half that can change while the app is running: the admin
- * adds "Mator Ochish" on one screen and the work-log form has to offer it on
+ * adds "Elektr simlari" on one screen and the work-log form has to offer it on
  * the next without a deploy.
  *
  * Request handling is deliberately dull but shared:

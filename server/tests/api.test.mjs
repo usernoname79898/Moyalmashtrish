@@ -435,14 +435,14 @@ async function runTests() {
   group('Master application flow + RBAC');
   r = await sa.post('/api/auth/apply', {
     full_name: 'UstA Bir', phone: '+998901112233', email: 'usta1@test.uz',
-    username: 'usta1', password: 'password123', specialty: 'Diagnostika', message: '5 yil tajriba',
+    username: 'usta1', password: 'password123', specialty: 'Elektrodiagnostika', message: '5 yil tajriba',
   });
   check(r.status === 201, 'master application submitted');
   const appId = r.data?.application?.id;
 
   r = await sa.post('/api/auth/apply', {
     full_name: 'UstA Bir', phone: '+998901112233', email: 'usta1@test.uz',
-    username: 'usta1', password: 'password123', specialty: 'Diagnostika',
+    username: 'usta1', password: 'password123', specialty: 'Elektrodiagnostika',
   });
   check(r.status === 409, 'duplicate application rejected');
 
@@ -478,14 +478,14 @@ async function runTests() {
   // ============================================================ A. worklog edit
   group('A. Worklog edit authorization (regression)');
   r = await m1.post('/api/admin/worklogs', {
-    title: 'Kapital taimirlash', service_type: 'Mator', status: 'Jarayonda',
+    title: 'Kapital taimirlash', service_type: 'Elektrodiagnostika', status: 'Jarayonda',
     price: 500000, customer_name: 'Ali', car_brand: 'Chevrolet', car_model: 'Cobalt',
   });
   check(r.status === 201, 'A1 master creates own worklog');
   const workId = r.data?.work?.id;
   check(r.data?.work?.is_public === 0, 'A2 new master worklog is private');
 
-  const baseBody = { title: 'x', service_type: 'Mator', status: 'Jarayonda', price: 100 };
+  const baseBody = { title: 'x', service_type: 'Elektrodiagnostika', status: 'Jarayonda', price: 100 };
 
   r = await m1.put(`/api/admin/worklogs/${workId}`, { ...baseBody, title: 'Kapital taimirlash v2' });
   check(r.status === 200 && r.data.work.title === 'Kapital taimirlash v2',
@@ -525,7 +525,7 @@ async function runTests() {
   r = await sa.get('/api/admin/worklogs');
   check(r.data.worklogs.length === 1, 'A15 super admin sees all worklogs');
 
-  r = await m1.put(`/api/admin/worklogs/${workId}`, { title: '', service_type: 'Mator', status: 'Jarayonda' });
+  r = await m1.put(`/api/admin/worklogs/${workId}`, { title: '', service_type: 'Elektrodiagnostika', status: 'Jarayonda' });
   check(r.status === 400, 'A16 validation still enforced on master edit');
   r = await m1.put(`/api/admin/worklogs/${workId}`, { ...baseBody, service_type: 'Nope' });
   check(r.status === 400, 'A17 invalid service_type rejected on master edit');
@@ -536,7 +536,7 @@ async function runTests() {
   check(r.status === 200, 'B0 super admin enables the public gallery');
 
   r = await m1.post('/api/admin/worklogs', {
-    title: 'Maxfiy ish', service_type: 'Diagnostika', status: 'Jarayonda', price: 0,
+    title: 'Maxfiy ish', service_type: 'Elektrodiagnostika', status: 'Jarayonda', price: 0,
   });
   const privateWorkId = r.data?.work?.id;
   check(privateWorkId > 0, 'B1 master creates a private worklog');
@@ -928,7 +928,7 @@ async function securityTests(ctx) {
 
   r = await anonymous.post('/api/auth/apply', {
     full_name: 'Limit Check', phone: '+998901112244', email: 'limit@test.uz',
-    username: 'limitcheck1', password: 'password123', specialty: 'Diagnostika',
+    username: 'limitcheck1', password: 'password123', specialty: 'Elektrodiagnostika',
   });
   check(r.status === 201, `P2.11 master application not rate limited (got ${r.status})`);
   r = await anonymous.get('/api/auth/setup-status');
@@ -1098,13 +1098,13 @@ async function securityTests(ctx) {
   await m2.post('/api/auth/login', { username: 'usta2', password: 'password123' });
   // Created by m1 so the ownership boundary is the one the app enforces: m1 owns
   // it, m2 does not, and it stays private (is_public defaults to 0).
-  r = await m1.post('/api/admin/worklogs', { title: 'Rasm testi', service_type: 'Diagnostika', status: 'Jarayonda', price: 10 });
+  r = await m1.post('/api/admin/worklogs', { title: 'Rasm testi', service_type: 'Elektrodiagnostika', status: 'Jarayonda', price: 10 });
   const imgWorkId = r.data?.work?.id;
   check(imgWorkId !== undefined, 'P11.1 private worklog created for the image tests');
 
   // A super admin must still name a master: without master_id the request is
   // invalid, not a 500.
-  r = await sa.post('/api/admin/worklogs', { title: 'Mastersiz', service_type: 'Diagnostika', price: 1 });
+  r = await sa.post('/api/admin/worklogs', { title: 'Mastersiz', service_type: 'Elektrodiagnostika', price: 1 });
   check(r.status === 400, `P11.1b super admin without master_id -> 400 (got ${r.status})`);
 
   r = await m1.req('POST', `/api/admin/worklogs/${imgWorkId}/images`, pngForm('files', 'private-a.png'), true);
@@ -1171,7 +1171,7 @@ async function securityTests(ctx) {
   check(s.contact && s.contact.show === true, 'P7.1 public contact.show defaults to true', JSON.stringify(s.contact?.show));
   check(s.hero && s.hero.stats_customers_value === '5000+' && s.hero.stats_support_value === '24/7',
     'P8.1 hero stats configurable and defaulted', JSON.stringify({ c: s.hero?.stats_customers_value, s: s.hero?.stats_support_value }));
-  check(s.hero?.stats_customers_label === 'Homiylangan mijozlar' && s.hero?.stats_support_label === 'Doimiy yordam',
+  check(s.hero?.stats_customers_label === 'Tuzatilgan avtomobillar' && s.hero?.stats_support_label === 'Tezkor yordam',
     'P8.1b hero stat labels have readable defaults', JSON.stringify([s.hero?.stats_customers_label, s.hero?.stats_support_label]));
   check(!('experience' in (s.hero || {})), 'P8.1c hero has no stale experience field (data lives in about)', JSON.stringify(Object.keys(s.hero || {})));
   check(s.about && s.about.experience === 10, 'P8.2 about.experience holds the experience value', JSON.stringify(s.about?.experience));
@@ -1214,7 +1214,7 @@ async function securityTests(ctx) {
 
   for (let i = 0; i < 6; i++) {
     const w = await sa.post('/api/admin/worklogs', {
-      title: `N1 ish ${i}`, service_type: 'Diagnostika', status: 'Tugallangan', price: 0, master_id: 2,
+      title: `N1 ish ${i}`, service_type: 'Elektrodiagnostika', status: 'Tugallangan', price: 0, master_id: 2,
     });
     const newId = w.data.work.id;
     await sa.put(`/api/admin/worklogs/${newId}`, { ...baseBody, title: `N1 ish ${i}`, status: 'Tugallangan', is_public: 1 });
@@ -1858,14 +1858,14 @@ async function readinessTests() {
   group('P16.3 remaining_amount is derived by the database');
   r = await dsa.post('/api/admin/debts', {
     full_name: 'Alisher Karimov', phone: '+998901112233', address: 'Urganch shahri',
-    service: 'Moy almashtirish', description: 'Castrol 5W-30', debt_amount: 500000,
+    service: 'Akkumulyator', description: 'Castrol 5W-30', debt_amount: 500000,
     // A client trying to dictate the derived column must simply be ignored.
     remaining_amount: 1, status: 'paid',
   });
   const dAli = r.data?.debt;
   check(r.status === 201 && dAli.remaining_amount === 500000, 'P16.3 remaining_amount comes from the DB, not the client', `got=${dAli && dAli.remaining_amount}`);
   check(dAli.status === 'unpaid', 'P16.3 status is derived from the amounts, not the request', `got=${dAli && dAli.status}`);
-  r = await dsa.post('/api/admin/debts', { full_name: 'Sevara', phone: '+998902223344', address: 'Xiva', service: 'Diagnostika', debt_amount: 300000, paid_amount: 100000 });
+  r = await dsa.post('/api/admin/debts', { full_name: 'Sevara', phone: '+998902223344', address: 'Xiva', service: 'Elektrodiagnostika', debt_amount: 300000, paid_amount: 100000 });
   const dSev = r.data.debt;
   check(r.status === 201 && dSev.remaining_amount === 200000 && dSev.status === 'partially_paid', 'P16.3 an opening payment yields partially_paid + correct remainder', `${dSev.status}/${dSev.remaining_amount}`);
   r = await dsa.get(`/api/admin/debts/${dSev.id}`);
@@ -1906,7 +1906,7 @@ async function readinessTests() {
   group('P16.6 Search, filter, sort, pagination');
   const bulk = [
     ['Qodir Ahmedov', '+998901000001', 'Xiva', 'Moy', 900000],
-    ['Lola Karimova', '+998901000002', 'Urganch', 'Diagnostika', 800000],
+    ['Lola Karimova', '+998901000002', 'Urganch', 'Elektrodiagnostika', 800000],
     ['=cmd|calc', '+998901000003', 'Termiz', 'Tormoz', 700000],
   ];
   const bulkIds = [];
@@ -2071,8 +2071,8 @@ async function readinessTests() {
   check(anonStats.status === 401, 'P16.15 the dashboard figures are not public', `status=${anonStats.status}`);
 
   group('P16.16 Editing a debt');
-  r = await dsa.patch(`/api/admin/debts/${dSev.id}`, { service: 'Programma' });
-  check(r.status === 200 && r.data.debt.service === 'Programma', 'P16.16 fields can be edited', `status=${r.status}`);
+  r = await dsa.patch(`/api/admin/debts/${dSev.id}`, { service: 'ECU va sensorlar' });
+  check(r.status === 200 && r.data.debt.service === 'ECU va sensorlar', 'P16.16 fields can be edited', `status=${r.status}`);
   check(Number(r.data.debt.remaining_amount) === 200000, 'P16.16 editing a non-amount field never disturbs the balance', `got=${r.data.debt && r.data.debt.remaining_amount}`);
   r = await dsa.patch(`/api/admin/debts/${dSev.id}`, { paid_amount: 0 });
   check(r.status === 200 && Number(r.data.debt.paid_amount) === 100000, 'P16.16 paid_amount is not editable directly, only through payments', `paid=${r.data.debt && r.data.debt.paid_amount}`);
@@ -2381,7 +2381,7 @@ async function readinessTests() {
   check(!readXlsx((await dsa.req('GET', '/api/admin/debts/export.xlsx?q=Legacy+Client')).buf).allText().includes('Chilanzar'),
     'P19.15 and it never reaches the export');
   // Editing must not blank out a value already on an old row either.
-  r = await dsa.patch(`/api/admin/debts/${dAli.id}`, { address: 'Yangi manzil', service: 'Moy almashtirish' });
+  r = await dsa.patch(`/api/admin/debts/${dAli.id}`, { address: 'Yangi manzil', service: 'Akkumulyator' });
   check(r.status === 200 && !JSON.stringify(r.data).includes('address'), 'P19.15 an edit carrying the old field still succeeds and ignores it', `status=${r.status}`);
   check((await dsa.get(`/api/admin/debts/${dAli.id}`)).status === 200, 'P19.15 debts created before the change are still fully readable');
 
@@ -2525,7 +2525,7 @@ async function readinessTests() {
     check(r.status === 400, `P17.3 ${label} is refused on consumption`, `status=${r.status}`);
   }
 
-  r = await isa.post(`/api/admin/inventory/products/${oil.id}/consume`, { quantity: '1.5', note: 'Moy almashtirish' });
+  r = await isa.post(`/api/admin/inventory/products/${oil.id}/consume`, { quantity: '1.5', note: 'Akkumulyator' });
   check(r.status === 201 && r.data.product.current_quantity === 3, 'P17.3 consumption lowers the level exactly', `status=${r.status} current=${r.data.product && r.data.product.current_quantity}`);
   check(r.data.movement.quantity === -1.5, 'P17.3 consumption is stored as a negative quantity', `quantity=${r.data.movement && r.data.movement.quantity}`);
 
@@ -2713,7 +2713,7 @@ async function readinessTests() {
 
   group('P17.10 A work log consumes stock atomically');
   r = await isa.post('/api/admin/worklogs', {
-    master_id: masterRow.id, title: 'Moy almashtirish', service_type: 'Moy almashtirish',
+    master_id: masterRow.id, title: 'Akkumulyator', service_type: 'Akkumulyator',
     status: 'Tugallangan', price: 120000,
     materials: [{ product_id: oil.id, quantity: 4 }, { product_id: filter.id, quantity: 1, note: 'Asosiy filtr' }],
   });
@@ -2739,7 +2739,7 @@ async function readinessTests() {
   await isa.post(`/api/admin/inventory/products/${short.id}/stock-in`, { quantity: 1 });
   const beforeRollback = (await isa.get('/api/admin/worklogs')).data.worklogs.length;
   r = await isa.post('/api/admin/worklogs', {
-    master_id: masterRow.id, title: 'Ishlatilishi mumkin emas', service_type: 'Moy almashtirish',
+    master_id: masterRow.id, title: 'Ishlatilishi mumkin emas', service_type: 'Akkumulyator',
     materials: [{ product_id: oil.id, quantity: 2 }, { product_id: short.id, quantity: 50 }],
   });
   check(r.status === 409, 'P17.11 a short second material fails the whole request', `status=${r.status}`);
@@ -2750,11 +2750,11 @@ async function readinessTests() {
   check(r.data.totals.consistent === true, 'P17.11 the rollback left no half-written movement', JSON.stringify(r.data.totals));
 
   r = await im1.post('/api/admin/worklogs', {
-    master_id: masterRow.id, title: 'Usta ishi', service_type: 'Diagnostika',
+    master_id: masterRow.id, title: 'Usta ishi', service_type: 'Elektrodiagnostika',
   });
   check(r.status === 201, 'P17.11 a master may still file a work log without materials', `status=${r.status}`);
   r = await im1.post('/api/admin/worklogs', {
-    master_id: masterRow.id, title: 'Usta moy sarfi', service_type: 'Moy almashtirish',
+    master_id: masterRow.id, title: 'Usta moy sarfi', service_type: 'Akkumulyator',
     materials: [{ product_id: oil.id, quantity: 1 }],
   });
   check(r.status === 403, 'P17.11 a master cannot drain the warehouse through a work log', `status=${r.status}`);
@@ -2771,20 +2771,20 @@ async function readinessTests() {
   ];
   for (const [mat, label] of badMaterialBodies) {
     r = await isa.post('/api/admin/worklogs', {
-      master_id: masterRow.id, title: `Material xatosi: ${label}`, service_type: 'Diagnostika', materials: [mat],
+      master_id: masterRow.id, title: `Material xatosi: ${label}`, service_type: 'Elektrodiagnostika', materials: [mat],
     });
     check(r.status === 400, `P17.12 ${label} in a material line is refused`, `status=${r.status}`);
   }
   r = await isa.post('/api/admin/worklogs', {
-    master_id: masterRow.id, title: 'Materials bo\'limi', service_type: 'Diagnostika', materials: 'oil',
+    master_id: masterRow.id, title: 'Materials bo\'limi', service_type: 'Elektrodiagnostika', materials: 'oil',
   });
   check(r.status === 400, 'P17.12 materials must be an array', `status=${r.status}`);
   r = await isa.post('/api/admin/worklogs', {
-    master_id: masterRow.id, title: 'Bo\'sh materiallar', service_type: 'Diagnostika', materials: [],
+    master_id: masterRow.id, title: 'Bo\'sh materiallar', service_type: 'Elektrodiagnostika', materials: [],
   });
   check(r.status === 201, 'P17.12 an empty materials array is valid', `status=${r.status}`);
   r = await isa.post('/api/admin/worklogs', {
-    master_id: masterRow.id, title: 'Materiallar yo\'q', service_type: 'Diagnostika',
+    master_id: masterRow.id, title: 'Materiallar yo\'q', service_type: 'Elektrodiagnostika',
   });
   check(r.status === 201, 'P17.12 a work log without materials still works', `status=${r.status}`);
   check((await isa.get('/api/admin/worklogs')).data.worklogs.length === beforeRollback + 3,
@@ -3453,7 +3453,7 @@ async function readinessTests() {
     'P18.21 and the fields it did send were applied', JSON.stringify(editedRow));
 
   // =========================================================================
-  // P20. Debt editing, and splitting "Mator xodovoy" into two services
+  // P20. Debt editing, and the auto-electrical service catalogue
   // =========================================================================
   // Two fresh clients: the groups above sign in and out freely, and nothing here
   // should depend on whoever happens to still hold a cookie.
@@ -3466,7 +3466,7 @@ async function readinessTests() {
 
   group('P20.1 An edit touches only the fields the form owns');
   const e0 = await p20sa.post('/api/admin/debts', {
-    full_name: 'Edit Probe', phone: '+998901110000', service: 'Moy almashtirish',
+    full_name: 'Edit Probe', phone: '+998901110000', service: 'Akkumulyator',
     debt_amount: 400000, paid_amount: 150000, description: 'birinchi',
   });
   check(e0.status === 201, 'P20.1 a debt to edit exists', `status=${e0.status}`);
@@ -3536,13 +3536,13 @@ async function readinessTests() {
   r = await p20sa.patch(`/api/admin/debts/${ftId}`, { service: 'Yoqilgi tizimi provasi' });
   check(r.status === 400,
     'P20.5 picking a service the shop does not offer is refused', `status=${r.status}`);
-  r = await p20sa.patch(`/api/admin/debts/${ftId}`, { service: 'Xodovoy' });
-  check(r.status === 200 && r.data.debt.service === 'Xodovoy',
+  r = await p20sa.patch(`/api/admin/debts/${ftId}`, { service: 'Starter va generator' });
+  check(r.status === 200 && r.data.debt.service === 'Starter va generator',
     'P20.5 and one it does offer goes through', `status=${r.status}`);
 
   group('P20.6 An archived debt cannot be edited');
   const arch = await p20sa.post('/api/admin/debts', {
-    full_name: 'Arch Edit', phone: '+998901110003', service: 'Mator', debt_amount: 5000,
+    full_name: 'Arch Edit', phone: '+998901110003', service: 'Elektrodiagnostika', debt_amount: 5000,
   });
   const archId = arch.data.debt.id;
   // Settle it first so the archived row is one the API could actually have
@@ -3583,35 +3583,35 @@ async function readinessTests() {
   } catch (e) { check(false, 'P20.7 the audit row can be read', String(e && e.message)); }
   await aud.end();
 
-  group('P20.8 The catalogue offers the two halves and not the whole');
+  group('P20.8 The catalogue offers the electrical services, not the mechanical set');
   r = await p20sa.get('/api/public/services');
   const pubNames = (r.data.services || []).map((s) => s.name);
-  check(pubNames.includes('Mator'), 'P20.8 Mator is offered on its own', JSON.stringify(pubNames));
-  check(pubNames.includes('Xodovoy'), 'P20.8 and so is Xodovoy', JSON.stringify(pubNames));
+  check(pubNames.includes('Elektrodiagnostika'), 'P20.8 Elektrodiagnostika is offered', JSON.stringify(pubNames));
+  check(pubNames.includes('Starter va generator'), 'P20.8 and so is Starter va generator', JSON.stringify(pubNames));
   check(!pubNames.includes(LEGACY_SERVICE_NAME),
-    'P20.8 the combined label is no longer selectable', JSON.stringify(pubNames));
-  check(pubNames.includes('Moy almashtirish') && pubNames.includes('Diagnostika')
-    && pubNames.includes('Elektrik') && pubNames.includes('Programma'),
-    'P20.8 and the rest of the catalogue survived the split', JSON.stringify(pubNames));
+    'P20.8 the retired label is no longer selectable', JSON.stringify(pubNames));
+  check(pubNames.includes('Akkumulyator') && pubNames.includes('Elektrodiagnostika')
+    && pubNames.includes('Elektr simlari') && pubNames.includes('ECU va sensorlar'),
+    'P20.8 and the rest of the electrical catalogue is present', JSON.stringify(pubNames));
 
-  group('P20.9 Each half files as its own work log');
+  group('P20.9 Each electrical service files as its own work log');
   r = await p20m.post('/api/admin/worklogs', {
-    title: 'Mator ishi', service_type: 'Mator', status: 'Jarayonda', price: 100,
+    title: 'Diagnostika ishi', service_type: 'Elektrodiagnostika', status: 'Jarayonda', price: 100,
   });
   check(r.status === 201,
-    'P20.9 an engine job files as Mator', `status=${r.status} ${JSON.stringify(r.data && r.data.error)}`);
+    'P20.9 a diagnostics job files as Elektrodiagnostika', `status=${r.status} ${JSON.stringify(r.data && r.data.error)}`);
   r = await p20m.post('/api/admin/worklogs', {
-    title: 'Xodovoy ishi', service_type: 'Xodovoy', status: 'Jarayonda', price: 100,
+    title: 'Starter ishi', service_type: 'Starter va generator', status: 'Jarayonda', price: 100,
   });
   check(r.status === 201,
-    'P20.9 and a chassis job files as Xodovoy', `status=${r.status}`);
+    'P20.9 and a starting/charging job files as Starter va generator', `status=${r.status}`);
   r = await p20m.post('/api/admin/worklogs', {
     title: 'Birikma ish', service_type: LEGACY_SERVICE_NAME, status: 'Jarayonda', price: 100,
   });
   check(r.status === 400,
     'P20.9 the retired combined label cannot be written again', `status=${r.status}`);
-  check(/ajratildi/.test((r.data && r.data.error) || ''),
-    'P20.9 and the message says where the two halves went', JSON.stringify(r.data));
+  check(/ishlatilmaydi/.test((r.data && r.data.error) || ''),
+    'P20.9 and the message points back to the catalogue', JSON.stringify(r.data));
   r = await p20m.post('/api/admin/worklogs', {
     title: 'Tanglayman', service_type: 'Bunday xizmat yo\'q', status: 'Jarayonda', price: 100,
   });
@@ -3641,11 +3641,11 @@ async function readinessTests() {
       'P20.10 and the stored value is not silently rewritten',
       `service=${r.data.work && r.data.work.service_type}`);
     r = await p20m.put(`/api/admin/worklogs/${legacyWlId}`, {
-      title: 'Eski ish (tahrir)', service_type: 'Mator',
+      title: 'Eski ish (tahrir)', service_type: 'Elektrodiagnostika',
       status: 'Jarayonda', price: 300000,
     });
-    check(r.status === 200 && r.data.work.service_type === 'Mator',
-      'P20.10 when the operator does pick a half, it is accepted',
+    check(r.status === 200 && r.data.work.service_type === 'Elektrodiagnostika',
+      'P20.10 when the operator picks a catalogue service, it is accepted',
       `status=${r.status} service=${r.data.work && r.data.work.service_type}`);
     r = await p20m.put(`/api/admin/worklogs/${legacyWlId}`, {
       title: 'Eski ish (tahrir)', service_type: 'Yoqilgi tizimi provasi',
@@ -3757,8 +3757,8 @@ async function readinessTests() {
 
   group('P20.15 The client catalogue is the same six names');
   check(SERVICE_NAMES.length === 6, 'P20.15 there are six of them', JSON.stringify(SERVICE_NAMES));
-  check(SERVICE_NAMES[0] === 'Mator' && SERVICE_NAMES[1] === 'Xodovoy',
-    'P20.15 and the two halves come first, in the order the shop offers them',
+  check(SERVICE_NAMES[0] === 'Elektrodiagnostika' && SERVICE_NAMES[1] === 'Elektr simlari',
+    'P20.15 and they come first in the order the shop offers them',
     JSON.stringify(SERVICE_NAMES));
   check(SERVICE_NAMES.every((n) => isServiceName(n)),
     'P20.15 every one of them is accepted as a service name');
@@ -3771,9 +3771,9 @@ async function readinessTests() {
   const fresh = serviceOptions('');
   check(fresh.length === 6 && fresh.every((o) => !o.legacy),
     'P20.16 a new debt is offered exactly the six services', JSON.stringify(fresh.map((o) => o.value)));
-  check(serviceOptions('Moy almashtirish').length === 6,
+  check(serviceOptions('Akkumulyator').length === 6,
     'P20.16 a value already on the catalogue gets no duplicate entry',
-    JSON.stringify(serviceOptions('Moy almashtirish').map((o) => o.value)));
+    JSON.stringify(serviceOptions('Akkumulyator').map((o) => o.value)));
   const legacyOpts = serviceOptions(LEGACY_SERVICE_NAME);
   check(legacyOpts.length === 7 && legacyOpts[0].value === LEGACY_SERVICE_NAME,
     'P20.16 a debt holding the old label is offered it back first',
@@ -3784,10 +3784,10 @@ async function readinessTests() {
   check(serviceOptions('Balans va rul')[0].value === 'Balans va rul',
     'P20.16 the same holds for any value the catalogue does not know',
     JSON.stringify(serviceOptions('Balans va rul')[0]));
-  check(serviceIcon('Mator') === 'engine' && serviceIcon('Xodovoy') === 'wrench',
-    'P20.16 both halves resolve to their own icon');
+  check(serviceIcon('Elektrodiagnostika') === 'diagnostic' && serviceIcon('Starter va generator') === 'refresh',
+    'P20.16 the electrical services resolve to their own icons');
   check(serviceIcon(LEGACY_SERVICE_NAME) === 'engine',
-    'P20.16 and a work log filed before the split still gets an icon');
+    'P20.16 and a work log filed before the catalogue switch still gets an icon');
   check(serviceIcon('nothing like it') === 'wrench',
     'P20.16 an unknown service falls back to the wrench instead of blanking');
 
@@ -3820,7 +3820,7 @@ async function readinessTests() {
   check(!worklogsSrc.includes(`'${LEGACY_SERVICE_NAME}'`) || /LEGACY_SERVICE_TYPE\s*=/.test(worklogsSrc),
     'P20.18 the server keeps the retired name only as a labelled legacy constant');
 
-  group('P20.19 Replaying the split rewrites no history');
+  group('P20.19 Replaying the catalogue migration rewrites no history');
   const liveDb = legacyClient(PG_DB);
   await liveDb.connect();
   try {
@@ -3834,7 +3834,8 @@ async function readinessTests() {
     });
     const before = await liveDb.query(
       'SELECT name, sort_order, is_active FROM services WHERE is_active = 1 ORDER BY sort_order, id');
-    await liveDb.query(migSql);
+    const rebrandSql = fs.readFileSync(path.join(SERVER_ROOT, 'migrations', '010_electric_service_catalog.sql'), 'utf8');
+    await liveDb.query(rebrandSql);
     const after = await liveDb.query(
       'SELECT name, sort_order, is_active FROM services WHERE is_active = 1 ORDER BY sort_order, id');
     check(JSON.stringify(after.rows) === JSON.stringify(before.rows),
@@ -3858,8 +3859,59 @@ async function readinessTests() {
     const audits = await liveDb.query(
       'SELECT COUNT(*)::int AS n FROM debt_audit_logs WHERE debt_id = $1', [replayDebt.data.debt.id]);
     check(audits.rows[0].n >= 1, 'P20.19 and so did its audit trail', `n=${audits.rows[0].n}`);
-  } catch (e) { check(false, 'P20.19 the split can be replayed on the live catalogue', String(e && e.message)); }
+  } catch (e) { check(false, 'P20.19 the catalogue migration can be replayed on the live catalogue', String(e && e.message)); }
   await liveDb.end();
+
+  group('P20.20 The rebrand migration retires the old catalogue without losing custom services');
+  const rebrandPath = path.join(SERVER_ROOT, 'migrations', '010_electric_service_catalog.sql');
+  const rebrandSrc = fs.readFileSync(rebrandPath, 'utf8');
+  const rebrandBody = rebrandSrc.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+  check(!/\b(DROP|TRUNCATE)\b/i.test(rebrandBody) && !/DELETE\s+FROM/i.test(rebrandBody),
+    'P20.20 it contains no DROP, TRUNCATE or DELETE FROM', 'one of them was found');
+  check(/is_active = 0/.test(rebrandBody) && /NOT EXISTS/.test(rebrandBody),
+    'P20.20 it deactivates instead of deleting and cannot duplicate a service', 'guards missing');
+  const rebrandDb = legacyClient(PG_DB);
+  await rebrandDb.connect();
+  try {
+    await rebrandDb.query('DROP SCHEMA IF EXISTS p20_rebrand CASCADE');
+    await rebrandDb.query('CREATE SCHEMA p20_rebrand');
+    await rebrandDb.query('SET search_path TO p20_rebrand');
+    await rebrandDb.query(`CREATE TABLE services (
+      id SERIAL PRIMARY KEY, name TEXT NOT NULL,
+      description TEXT DEFAULT '', benefits TEXT DEFAULT '', image TEXT DEFAULT '',
+      icon TEXT DEFAULT '', price TEXT DEFAULT '',
+      sort_order INTEGER DEFAULT 0, is_active INTEGER DEFAULT 1)`);
+    await rebrandDb.query(`INSERT INTO services (name, sort_order, is_active) VALUES
+      ('Mator', 1, 1), ('Xodovoy', 2, 1), ('Diagnostika', 3, 1),
+      ('Programma', 4, 1), ('Elektrik', 5, 1), ('Moy almashtirish', 6, 1),
+      ('Maxsus xizmat', 7, 1)`);
+    await rebrandDb.query(rebrandSrc);
+    const rows = (await rebrandDb.query(
+      'SELECT name, sort_order, is_active FROM services ORDER BY sort_order, id')).rows;
+    const byName = Object.fromEntries(rows.map((row) => [row.name, row]));
+    const oldNames = ['Mator', 'Xodovoy', 'Diagnostika', 'Programma', 'Elektrik', 'Moy almashtirish'];
+    check(rows.length === 13,
+      'P20.20 all six old rows are kept and six electrical ones are added', `rows=${rows.length}`);
+    check(oldNames.every((name) => byName[name] && Number(byName[name].is_active) === 0),
+      'P20.20 the old catalogue is retired, never removed',
+      JSON.stringify(oldNames.map((name) => [name, byName[name] && byName[name].is_active])));
+    check(byName['Maxsus xizmat'] && Number(byName['Maxsus xizmat'].is_active) === 1,
+      'P20.20 a custom service the admin added is left alone');
+    check(SERVICE_NAMES.every((name) => byName[name] && Number(byName[name].is_active) === 1),
+      'P20.20 the six electrical services are active',
+      JSON.stringify(SERVICE_NAMES.map((name) => [name, byName[name] && byName[name].is_active])));
+    check(SERVICE_NAMES.every((name, i) => Number(byName[name].sort_order) === 8 + i),
+      'P20.20 they are appended after the highest existing sort order, in order',
+      JSON.stringify(SERVICE_NAMES.map((name) => [name, byName[name] && byName[name].sort_order])));
+    await rebrandDb.query(rebrandSrc);
+    const again = (await rebrandDb.query(
+      'SELECT name, sort_order, is_active FROM services ORDER BY sort_order, id')).rows;
+    check(JSON.stringify(again) === JSON.stringify(rows),
+      'P20.20 running it a second time changes nothing at all', JSON.stringify(again));
+  } catch (e) { check(false, 'P20.20 the rebrand migration can be replayed in isolation', String(e && e.message)); }
+  await rebrandDb.query('SET search_path TO public').catch(() => {});
+  await rebrandDb.query('DROP SCHEMA IF EXISTS p20_rebrand CASCADE').catch(() => {});
+  await rebrandDb.end();
 
   // =========================================================================
   // P21. Warehouse prices: cost, markup, and the sale price that follows
@@ -4180,7 +4232,7 @@ async function readinessTests() {
   check(r.status === 201 && Number(r.data.product.current_quantity) === 10,
     'P21.19 ten litres are stocked', `status=${r.status} ${JSON.stringify(r.data && r.data.product)}`);
   r = await p21.post('/api/admin/worklogs', {
-    master_id: masterRow.id, title: 'P21 moy sarfi', service_type: 'Moy almashtirish',
+    master_id: masterRow.id, title: 'P21 moy sarfi', service_type: 'Akkumulyator',
     status: 'Tugallangan', price: 120000,
     materials: [{ product_id: jobOil.id, quantity: 4 }],
   });
@@ -4333,7 +4385,7 @@ async function readinessTests() {
     'P22.5 the admin switches it off', `status=${r.status}`);
   r = await p22.get('/api/admin/worklogs/services');
   const p22AfterRetire = (r.data.services || []).map((s) => s.name);
-  check(!p22AfterRetire.includes('Mator Ochish') && p22AfterRetire.includes('Mator'),
+  check(!p22AfterRetire.includes('Mator Ochish') && p22AfterRetire.includes('Elektrodiagnostika'),
     'P22.5 it is gone from the select while the rest are untouched',
     JSON.stringify(p22AfterRetire));
 
@@ -4431,7 +4483,7 @@ async function readinessTests() {
   r = await p22anon.get('/api/admin/worklogs/services');
   check(r.status === 401, 'P22.11 an anonymous visitor gets 401 rather than the list',
     `status=${r.status}`);
-  r = await p22anon.post('/api/admin/worklogs', { title: 'x', service_type: 'Mator' });
+  r = await p22anon.post('/api/admin/worklogs', { title: 'x', service_type: 'Elektrodiagnostika' });
   check(r.status === 401 || r.status === 403,
     'P22.11 and still cannot file work', `status=${r.status}`);
   const p22Src = path.join(srcRoot, 'pages', 'admin', 'WorkLogs.jsx');
@@ -4462,7 +4514,7 @@ async function readinessTests() {
   check(r.status === 200 && Array.isArray(r.data.services) && r.data.services.length === 0,
     'P22.12 the endpoint answers with an empty list', JSON.stringify(r.data));
   r = await p22.post('/api/admin/worklogs', {
-    master_id: masterRow.id, title: 'P22 menusiz', service_type: 'Mator',
+    master_id: masterRow.id, title: 'P22 menusiz', service_type: 'Elektrodiagnostika',
     status: 'Jarayonda', price: 1000,
   });
   check(r.status === 400 && /faol emas/.test((r.data && r.data.error) || ''),
@@ -4483,8 +4535,8 @@ async function readinessTests() {
     'P22.13 a debt can be recorded under the newly added service', `status=${p22Debt.status}`);
   const p22DebtId = p22Debt.data && p22Debt.data.debt.id;
   if (p22DebtId) {
-    r = await p22.patch(`/api/admin/debts/${p22DebtId}`, { service: 'Elektrik' });
-    check(r.status === 200 && r.data.debt.service === 'Elektrik',
+    r = await p22.patch(`/api/admin/debts/${p22DebtId}`, { service: 'Elektr simlari' });
+    check(r.status === 200 && r.data.debt.service === 'Elektr simlari',
       'P22.13 an edit still picks from the live catalogue',
       `status=${r.status} ${JSON.stringify(r.data)}`);
     r = await p22.patch(`/api/admin/debts/${p22DebtId}`, { service: 'XADAVOY' });
@@ -4849,6 +4901,156 @@ async function readinessTests() {
     check(ar.status === 200 && !(ar.data.expenses || []).some((e) => e.id === arc.id), 'P23.18 while the live ledger hides it', JSON.stringify((ar.data.expenses || []).map((e) => e.id).slice(0, 5)));
   }
   p23ArchChild.kill('SIGTERM');
+
+  group('P24.0 The queue lifecycle is recorded by the schema');
+  let p24 = await p23db.query(
+    "SELECT is_nullable, column_default FROM information_schema.columns WHERE table_name = 'work_logs' AND column_name = 'scheduled_time'",
+  );
+  check(p24.rows.length === 1, 'P24.0 migration 009 adds scheduled_time', JSON.stringify(p24.rows));
+  check(
+    p24.rows.length === 1 && p24.rows[0].is_nullable === 'NO' && String(p24.rows[0].column_default || '').includes("''"),
+    'P24.0 the time defaults to an empty string, so existing rows stay valid',
+    JSON.stringify(p24.rows[0]),
+  );
+  p24 = await p23db.query(
+    "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'work_logs_status_check'",
+  );
+  const p24Check = String((p24.rows[0] && p24.rows[0].def) || '');
+  check(
+    p24Check.includes("'Kutilayotgan'") && p24Check.includes("'Jarayonda'")
+      && p24Check.includes("'Tugallangan'") && p24Check.includes("'Bekor qilingan'"),
+    'P24.0 the status CHECK accepts the full lifecycle',
+    p24Check,
+  );
+
+  const p24Tag = Date.now();
+  const p24Name = (s) => `P24 ${s} ${p24Tag}`;
+  const p24Base = () => ({
+    master_id: masterRow.id,
+    service_type: p23Service.name,
+    status: 'Kutilayotgan',
+    customer_name: p24Name('mijoz'),
+    customer_phone: '+998901234567',
+    car_brand: 'Chevrolet',
+    car_model: 'Cobalt',
+    car_number: '01A123BC',
+    start_date: '2026-10-21',
+  });
+
+  group('P24.1 A queue slot keeps its time');
+  r = await p23.post('/api/admin/worklogs', {
+    ...p24Base(), title: p24Name('navbat'), scheduled_time: '09:30',
+  });
+  const p24Work = r.data && r.data.work;
+  check(
+    r.status === 201 && !!p24Work && p24Work.status === 'Kutilayotgan' && p24Work.scheduled_time === '09:30',
+    'P24.1 a waiting job round-trips with its HH:MM slot',
+    `status=${r.status} ${JSON.stringify(r.data)}`,
+  );
+  r = await p23.post('/api/admin/worklogs', { ...p24Base(), title: p24Name('vaqt-xato'), scheduled_time: '25:00' });
+  check(r.status === 400, 'P24.1 an impossible hour is refused', `status=${r.status}`);
+  r = await p23.post('/api/admin/worklogs', { ...p24Base(), title: p24Name('vaqt-xato2'), scheduled_time: '9:30' });
+  check(r.status === 400, 'P24.1 the time must be strict HH:MM', `status=${r.status}`);
+
+  group('P24.2 One-click actions follow the lifecycle');
+  r = await p23.patch(`/api/admin/worklogs/${p24Work.id}/status`, { status: 'Tugallangan' });
+  check(r.status === 409, 'P24.2 a waiting job cannot jump straight to done', `status=${r.status} ${JSON.stringify(r.data)}`);
+  r = await p23.patch(`/api/admin/worklogs/${p24Work.id}/status`, { status: 'Kutilayotgan' });
+  check(r.status === 409, 'P24.2 setting the same status is not a no-op success', `status=${r.status}`);
+  r = await p23.patch(`/api/admin/worklogs/${p24Work.id}/status`, { status: 'Jarayonda' });
+  check(r.status === 200 && r.data.work.status === 'Jarayonda', 'P24.2 waiting starts work', `status=${r.status} ${JSON.stringify(r.data)}`);
+  r = await p23.patch(`/api/admin/worklogs/${p24Work.id}/status`, { status: 'Tugallangan' });
+  check(r.status === 200 && r.data.work.status === 'Tugallangan', 'P24.2 in-progress finishes', `status=${r.status} ${JSON.stringify(r.data)}`);
+  r = await p23.patch(`/api/admin/worklogs/${p24Work.id}/status`, { status: 'Jarayonda' });
+  check(r.status === 409, 'P24.2 a finished job is terminal', `status=${r.status}`);
+  r = await p23.patch(`/api/admin/worklogs/${p24Work.id}/status`, { status: 'Noma lum' });
+  check(r.status === 400, 'P24.2 an unknown status is a 400', `status=${r.status}`);
+
+  group('P24.3 The action stays inside the owner and the login');
+  r = await p23.post('/api/admin/worklogs', { ...p24Base(), title: p24Name('egasi') });
+  const p24Owned = r.data && r.data.work;
+  const p24anon = newClient();
+  r = await p24anon.patch(`/api/admin/worklogs/${p24Owned.id}/status`, { status: 'Jarayonda' });
+  check(r.status === 401, 'P24.3 an anonymous caller cannot move a job', `status=${r.status}`);
+  const p24usta2 = newClient();
+  r = await p24usta2.post('/api/auth/login', { username: 'usta2', password: 'password123' });
+  check(r.status === 200, 'P24.3 a second master signs in', `status=${r.status}`);
+  r = await p24usta2.patch(`/api/admin/worklogs/${p24Owned.id}/status`, { status: 'Jarayonda' });
+  check(r.status === 403, "P24.3 and cannot move another master's job", `status=${r.status}`);
+  r = await p23m.patch(`/api/admin/worklogs/${p24Owned.id}/status`, { status: 'Jarayonda' });
+  check(r.status === 200 && r.data.work.status === 'Jarayonda', 'P24.3 the owner can start it', `status=${r.status} ${JSON.stringify(r.data)}`);
+
+  group('P24.4 Cancellation is a state, not a delete');
+  r = await p23.patch(`/api/admin/worklogs/${p24Owned.id}/status`, { status: 'Bekor qilingan' });
+  check(r.status === 200 && r.data.work.status === 'Bekor qilingan', 'P24.4 an active job can be cancelled', `status=${r.status}`);
+  r = await p23.get(`/api/admin/worklogs/${p24Owned.id}`);
+  check(r.status === 200 && r.data.work.status === 'Bekor qilingan', 'P24.4 and the row is still readable afterwards', `status=${r.status}`);
+  r = await p23.patch(`/api/admin/worklogs/${p24Owned.id}/status`, { status: 'Jarayonda' });
+  check(r.status === 409, 'P24.4 a cancelled job cannot be revived by a one-click action', `status=${r.status}`);
+
+  group('P24.5 The list paginates only when asked');
+  for (let i = 1; i <= 3; i += 1) {
+    r = await p23.post('/api/admin/worklogs', { ...p24Base(), title: p24Name(`sahifa ${i}`) });
+    check(r.status === 201, `P24.5 queue row ${i} is created`, `status=${r.status}`);
+  }
+  r = await p23.get(`/api/admin/worklogs?q=${encodeURIComponent('P24')}&per_page=2&page=1`);
+  const p24Page1 = r.data && r.data.pagination;
+  check(r.status === 200 && r.data.worklogs.length === 2, 'P24.5 a page asks for and receives two rows', `status=${r.status} ${JSON.stringify(p24Page1)}`);
+  check(
+    !!p24Page1 && p24Page1.page === 1 && p24Page1.per_page === 2 && p24Page1.total >= 5
+      && p24Page1.pages === Math.max(1, Math.ceil(p24Page1.total / 2)),
+    'P24.5 the pagination envelope describes the full result',
+    JSON.stringify(p24Page1),
+  );
+  r = await p23.get(`/api/admin/worklogs?q=${encodeURIComponent('P24')}&per_page=2&page=999`);
+  check(
+    r.status === 200 && r.data.pagination.page === r.data.pagination.pages,
+    'P24.5 an out-of-range page is clamped to the last page',
+    JSON.stringify(r.data.pagination),
+  );
+  r = await p23.get(`/api/admin/worklogs?q=${encodeURIComponent('P24')}&per_page=0`);
+  check(r.status === 200 && r.data.pagination.per_page === 1, 'P24.5 a zero page size is clamped upward', JSON.stringify(r.data.pagination));
+  r = await p23.get(`/api/admin/worklogs?q=${encodeURIComponent('P24')}&per_page=9999`);
+  check(r.status === 200 && r.data.pagination.per_page === 100, 'P24.5 an oversized page is clamped downward', JSON.stringify(r.data.pagination));
+  r = await p23.get(`/api/admin/worklogs?q=${encodeURIComponent('P24')}`);
+  check(r.status === 200 && r.data.pagination === undefined && Array.isArray(r.data.worklogs), 'P24.5 the historical unpaginated call is untouched');
+  check(r.data.worklogs.length >= 5, 'P24.5 and it still returns every match', String(r.data.worklogs.length));
+
+  group('P24.6 Search reaches the fields the front desk uses');
+  r = await p23.get(`/api/admin/worklogs?q=${encodeURIComponent('901234567')}`);
+  check(
+    r.status === 200 && r.data.worklogs.some((w) => w.id === p24Work.id),
+    'P24.6 a phone number finds the job',
+    JSON.stringify(r.data.worklogs.map((w) => w.id).slice(0, 5)),
+  );
+  r = await p23.get(`/api/admin/worklogs?q=${encodeURIComponent('01A123BC')}`);
+  check(
+    r.status === 200 && r.data.worklogs.some((w) => w.id === p24Work.id),
+    'P24.6 a plate finds the job',
+    JSON.stringify(r.data.worklogs.map((w) => w.id).slice(0, 5)),
+  );
+  r = await p23.get(`/api/admin/worklogs?q=${p24Work.id}`);
+  check(
+    r.status === 200 && r.data.worklogs.some((w) => w.id === p24Work.id),
+    'P24.6 and so does the queue number',
+    JSON.stringify(r.data.worklogs.map((w) => w.id).slice(0, 5)),
+  );
+
+  group('P24.7 The statistics know all four states');
+  r = await p23.get('/api/admin/worklogs/stats');
+  const p24Stats = r.data && r.data.stats;
+  check(
+    r.status === 200 && p24Stats
+      && Number.isInteger(p24Stats.waiting) && Number.isInteger(p24Stats.inProgress)
+      && Number.isInteger(p24Stats.completed) && Number.isInteger(p24Stats.cancelled),
+    'P24.7 every lifecycle state has a count',
+    JSON.stringify(p24Stats),
+  );
+  check(
+    p24Stats && p24Stats.waiting + p24Stats.inProgress + p24Stats.completed + p24Stats.cancelled === p24Stats.total,
+    'P24.7 the four states add up to the total',
+    JSON.stringify(p24Stats),
+  );
 
   await p22db.end();
 }

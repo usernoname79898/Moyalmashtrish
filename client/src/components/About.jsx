@@ -11,9 +11,9 @@ export default function About() {
 
   const points = [
     { icon: 'check', text: "Sifat kafolati va shaffof narxlar" },
-    { icon: 'clock', text: "O'z vaqtida va tezkor xizmat" },
-    { icon: 'diagnostic', text: "Zamonaviy diagnostika uskunalari" },
-    { icon: 'user', text: "Tajribali sertifikatlangan ustalar" },
+    { icon: 'clock', text: "Tezkor va aniq diagnostika" },
+    { icon: 'diagnostic', text: "Zamonaviy elektr diagnostika uskunalari" },
+    { icon: 'user', text: "Tajribali avtoelektriklar" },
   ];
 
   return (
@@ -28,7 +28,7 @@ export default function About() {
               <div className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[rgb(var(--c-secondary))] to-[#182136]">
                 <span className="absolute inset-0 bg-[radial-gradient(50%_60%_at_50%_40%,rgb(var(--c-primary))/0.12,transparent)]" aria-hidden="true" />
                 <span className="relative flex h-28 w-28 items-center justify-center rounded-3xl border border-white/10 bg-white/[0.04] text-white/25 shadow-2xl">
-                  <Icon name="engine" size={64} />
+                  <Icon name="bolt" size={64} />
                 </span>
               </div>
             )}

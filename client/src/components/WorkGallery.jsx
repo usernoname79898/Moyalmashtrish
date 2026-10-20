@@ -21,12 +21,12 @@ export default function WorkGallery() {
 
   return (
     <section id="worklogs" className="relative py-20 md:py-28">
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(40%_60%_at_80%_20%,rgba(225,29,46,0.06),transparent)]" />
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(40%_60%_at_80%_20%,rgba(7,156,240,0.06),transparent)]" />
       <div className="container-x">
         <SectionTitle
           eyebrow="Ko'rsatilgan natijalar"
           title="Bizning bajarilgan ishlarimiz"
-          description="Ustalarimiz tomonidan bajarilgan ishlar va real natijalar. Fotosuratlarni ko'rib chiqing."
+          description="Avtoelektriklarimiz tomonidan bajarilgan ta'mirlash ishlari va real natijalar. Fotosuratlarni ko'rib chiqing."
         />
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">

@@ -26,10 +26,10 @@ export default function Footer() {
                 <img src={site.logo} alt={site.name} className="h-10 w-10 rounded-xl object-cover" />
               ) : (
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgb(var(--c-primary))] text-white shadow-lg shadow-[rgb(var(--c-primary))/30]">
-                  <Icon name="wrench" size={20} />
+                  <Icon name="bolt" size={20} />
                 </span>
               )}
-              <span className="text-lg font-extrabold tracking-tight text-white">{site.name || 'AvtoServis'}</span>
+              <span className="text-lg font-extrabold tracking-tight text-white">{site.name || 'Amper Avto Elektro'}</span>
             </Link>
             <p className="mt-4 text-sm leading-relaxed text-white/50">{footer.text || ''}</p>
             <div className="mt-5 flex gap-3">
@@ -80,10 +80,10 @@ export default function Footer() {
 
       <div className="border-t border-white/5 py-5">
         <div className="container-x flex flex-col items-center justify-between gap-2 text-center text-xs text-white/40 sm:flex-row">
-          <span>{footer.copyright || `© ${new Date().getFullYear()} ${site.name || 'AvtoServis'}.`}</span>
+          <span>{footer.copyright || `© ${new Date().getFullYear()} ${site.name || 'Amper Avto Elektro'}.`}</span>
           <Link to="/admin/login" className="flex items-center gap-1.5 transition hover:text-white/70">
             <Icon name="lock" size={13} />
-            Master panel
+            Usta paneli
           </Link>
         </div>
       </div>

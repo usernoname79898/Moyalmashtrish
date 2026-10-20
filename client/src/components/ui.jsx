@@ -122,16 +122,32 @@ export function Toggle({ checked, onChange, label, disabled }) {
   );
 }
 
-export function ConfirmDialog({ open, title, message, onCancel, onConfirm, busy = false }) {
+export function ConfirmDialog({
+  open,
+  title,
+  message,
+  onCancel,
+  onConfirm,
+  busy = false,
+  confirmLabel = "O'chirish",
+  cancelLabel = 'Bekor qilish',
+  busyLabel = 'Jarayonda...',
+  tone = 'danger',
+}) {
+  const toneClass = tone === 'warn'
+    ? 'bg-amber-600 hover:bg-amber-500'
+    : tone === 'primary'
+      ? 'bg-[rgb(var(--c-primary))] hover:opacity-90'
+      : 'bg-red-600 hover:bg-red-500';
   return (
     <Modal open={open} onClose={onCancel} title={title}>
       <p className="text-sm text-white/70">{message}</p>
       <div className="mt-6 flex justify-end gap-3">
         <button type="button" onClick={onCancel} className="rounded-xl border border-white/15 px-5 py-2.5 text-sm font-medium text-white/80 hover:bg-white/5">
-          Bekor qilish
+          {cancelLabel}
         </button>
-        <button type="button" onClick={onConfirm} disabled={busy} className="rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60">
-          {busy ? 'Jarayonda...' : 'O\'chirish'}
+        <button type="button" onClick={onConfirm} disabled={busy} className={`rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60 ${toneClass}`}>
+          {busy ? busyLabel : confirmLabel}
         </button>
       </div>
     </Modal>

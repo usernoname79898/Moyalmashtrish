@@ -365,9 +365,9 @@ function ExcelExportButton({ filter, sort, search, onError }) {
 /**
  * Service picker shared by the add and edit forms.
  *
- * A free-text field let the ledger collect "Moy", "Balans" and "Tormoz" for what
- * is really the same three services, and it is the field a debt is grouped and
- * read by. The list is the shop's catalogue, read live from the `services` table
+ * A free-text field let the ledger collect "Elektr simlari", "Simlar" and
+ * "Provodka" for what is really the same service, and it is the field a debt is
+ * grouped and read by. The list is the shop's catalogue, read live from the `services` table
  * that /admin/services edits (client/src/serviceTypes.js), so a service added
  * there is choosable here without a deploy; `serviceOptions` supplies the rules
  * and the bundled baseline while that request is in flight or has failed, so the

@@ -7,6 +7,8 @@ const paths = {
   chip: 'M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3M6 7h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z M12 9v6',
   bolt: 'M13 2 4 14h6l-1 8 9-12h-6l1-8Z',
   oil: 'M6 4h12l-1.5 3h-9L6 4ZM10.5 7 9 19h6l1.5-12 M8 3h8',
+  battery: 'M3 8h15a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2Z M20 10v4M5 11v2M8 11v2M11 11v2M14 11v2',
+  light: 'M9 18h6 M10 21h4 M12 3a6 6 0 0 1 3.5 10.9c-.5.4-.8 1-.8 1.6V17H9.3v-1.5c0-.6-.3-1.2-.8-1.6A6 6 0 0 1 12 3Z',
   phone: 'M6.6 3h3l1.4 4-2 1.6a12 12 0 0 0 5.4 5.4L16 12l4 1.4v3a2 2 0 0 1-2.2 2A17 17 0 0 1 4.6 5.2 2 2 0 0 1 6.6 3Z',
   telegram: 'M9.7 15.5 21 5M9.7 15.5 7.9 20c-.3.7-1.2.6-1.3-.1L5.5 9.1c0-.5.4-.9.9-1l15.2-3.4c.5-.1.9.3.8.8L9.7 15.5Z',
   instagram: 'M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4Zm5 5a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm5.5-1.5h.01',
@@ -44,6 +46,13 @@ const paths = {
   money: 'M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18Zm-2 5v2h4v2h-4v5h2v-1a3 3 0 0 0 2-2M9 16h6',
   // Carton / parts box: filters and any warehoused consumable.
   box: 'M3 8l9-5 9 5v8l-9 5-9-5V8Zm9 5 9-5M12 13v8M3 8l9 5',
+  list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+  play: 'M8 5v14l11-7-11-7Z',
+  flag: 'M5 21V4h14l-2 4 2 4H5',
+  xcircle: 'M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18Zm-3 6 6 6M15 9l-6 6',
+  car: 'M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11M5 11h14v6H5v-6Zm2 6v2M17 17v2M7.5 14h.01M16.5 14h.01',
+  refresh: 'M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5',
+  filter: 'M4 5h16l-6 7v6l-4 2v-8L4 5Z',
 };
 
 export function Icon({ name, size = 24, className = '', strokeWidth = 1.8 }) {

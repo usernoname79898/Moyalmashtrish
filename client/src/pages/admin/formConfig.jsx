@@ -38,7 +38,7 @@ export function Field({ field, value, onChange }) {
           <div className="flex items-center gap-3">
             <input
               type="color"
-              value={isHexColor(text) ? text : '#e11d2e'}
+              value={isHexColor(text) ? text : '#079cf0'}
               onChange={(e) => set(e.target.value)}
               className="h-10 w-14 cursor-pointer rounded-lg border border-white/10 bg-transparent"
             />
@@ -47,7 +47,7 @@ export function Field({ field, value, onChange }) {
                 className={`field ${text && !valid ? 'border-rose-500/60' : ''}`}
                 value={text}
                 onChange={(e) => set(e.target.value)}
-                placeholder="#e11d2e"
+                placeholder="#079cf0"
               />
               {text && !valid && (
                 <p className="mt-1 text-xs text-rose-400">
@@ -97,13 +97,13 @@ export function Field({ field, value, onChange }) {
 
 export const KEY_FIELDS = {
   site: [
-    { key: 'name', label: 'Sayt nomi', type: 'text', placeholder: 'AvtoServis' },
+    { key: 'name', label: 'Sayt nomi', type: 'text', placeholder: 'Amper Avto Elektro' },
     { key: 'logo', label: 'Logo', type: 'image' },
     { key: 'favicon', label: 'Favicon (kichik belgi)', type: 'image' },
     { key: 'phone', label: 'Telefon', type: 'text', placeholder: '+998 90 123 45 67' },
-    { key: 'email', label: 'Email', type: 'email', placeholder: 'info@avtoservis.uz' },
-    { key: 'telegram', label: 'Telegram havola', type: 'url', placeholder: 'https://t.me/avtoservis' },
-    { key: 'instagram', label: 'Instagram havola', type: 'url', placeholder: 'https://instagram.com/avtoservis' },
+    { key: 'email', label: 'Email', type: 'email', placeholder: 'info@amper.uz' },
+    { key: 'telegram', label: 'Telegram havola', type: 'url', placeholder: 'https://t.me/amperuz' },
+    { key: 'instagram', label: 'Instagram havola', type: 'url', placeholder: 'https://instagram.com/amper.uz' },
     { key: 'address', label: 'Manzil', type: 'text', placeholder: 'Toshkent sh.' },
     { key: 'working_hours', label: 'Ish vaqti', type: 'textarea', placeholder: 'Dushanba – Shanba: 09:00 – 19:00\nYakshanba: dam olish kuni' },
   ],

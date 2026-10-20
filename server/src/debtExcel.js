@@ -103,7 +103,7 @@ function finishSheet(sheet, lastRow, columnCount) {
 /** Builds the three worksheets from plain row objects. */
 async function buildDebtWorkbook({ debts, payments, auditLogs, totals, generatedAt }) {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'AvtoServis — Qarz daftari';
+  workbook.creator = 'Amper Avto Elektro — Qarz daftari';
   workbook.created = new Date();
 
   // ---------------------------------------------------------------- Qarzlar

@@ -7,8 +7,7 @@ import { SERVICE_NAMES, serviceOptions } from '../../serviceCatalog';
 import { useServiceTypes } from '../../serviceTypes';
 import { money as formatMoney, DEFAULT_CURRENCY } from '../../money';
 import CurrencySelect from '../../components/CurrencySelect';
-
-const STATUSES = ['Jarayonda', 'Tugallangan'];
+import StatusBadge, { STATUSES } from '../../components/StatusBadge';
 
 function fmt(c, currency = DEFAULT_CURRENCY) {
   return formatMoney(c, currency);
@@ -258,10 +257,6 @@ function StatCard({ icon, label, value, color, small }) {
   );
 }
 
-function StatusBadge({ status }) {
-  return <Badge kind={status === 'Tugallangan' ? 'success' : 'warn'}>{status}</Badge>;
-}
-
 function WorkCard({ w, isSA, onEdit, onDelete, onOpenLightbox, reload, onError }) {
   const [busy, setBusy] = useState(false);
 
@@ -280,7 +275,7 @@ function WorkCard({ w, isSA, onEdit, onDelete, onOpenLightbox, reload, onError }
             {(w.car_brand || w.car_model) && <span>🚗 {[w.car_brand, w.car_model].filter(Boolean).join(' ')}</span>}
             {w.car_number && <span>#{w.car_number}</span>}
             {w.customer_name && <span>Mijoz: {w.customer_name}</span>}
-            {w.start_date && <span>📅 {w.start_date}</span>}
+            {w.start_date && <span>📅 {w.start_date}{w.scheduled_time ? ` · ${w.scheduled_time}` : ''}</span>}
             {Number(w.price) > 0 && <span className="font-semibold text-emerald-400">{fmt(w.price, w.currency)}</span>}
           </div>
           {w.description && <p className="mt-2 line-clamp-2 text-sm text-white/60">{w.description}</p>}
@@ -316,14 +311,14 @@ function WorkCard({ w, isSA, onEdit, onDelete, onOpenLightbox, reload, onError }
 
 const EMPTY_FORM = {
   title: '', customer_name: '', customer_phone: '', car_brand: '', car_model: '', car_number: '',
-  service_type: '', description: '', start_date: '', end_date: '', price: '', status: 'Jarayonda',
+  service_type: '', description: '', start_date: '', end_date: '', scheduled_time: '', price: '', status: 'Jarayonda',
   notes: '', is_public: false, master_id: '', currency: DEFAULT_CURRENCY,
 };
 
-function WorkForm({ isSA, initial, defaultStatus, masters, onClose, onSaved }) {
+export function WorkForm({ isSA, initial, defaultStatus, masters, onClose, onSaved }) {
   const isEdit = !!initial.id;
   const [form, setForm] = useState({ ...EMPTY_FORM, status: defaultStatus || EMPTY_FORM.status, master_id: masters.length ? masters[0].id : '', ...initial, is_public: !!initial.is_public });
-  // Fresh on every open: an admin who has just added "Mator Ochish" on
+  // Fresh on every open: an admin who has just added "Elektr simlari" on
   // /admin/services expects this modal to offer it on the next open. No fallback
   // on purpose -- while the request is in flight the select says so, instead of
   // showing a list that may already be out of date.
@@ -468,7 +463,7 @@ function WorkForm({ isSA, initial, defaultStatus, masters, onClose, onSaved }) {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <label className="label">Ish nomi *</label>
-            <input className="field" value={form.title} onChange={set('title')} placeholder="Masalan: Dvigatel kapital taimirlash" required />
+            <input className="field" value={form.title} onChange={set('title')} placeholder="Masalan: Simlar uzilishini tuzatish" required />
           </div>
           {isSA && !isEdit && (
             <div className="sm:col-span-2">
@@ -542,6 +537,10 @@ function WorkForm({ isSA, initial, defaultStatus, masters, onClose, onSaved }) {
           <div>
             <label className="label">Ish tugash sanasi</label>
             <input type="date" className="field" value={form.end_date} onChange={set('end_date')} />
+          </div>
+          <div>
+            <label className="label">Navbat vaqti</label>
+            <input type="time" className="field" value={form.scheduled_time || ''} onChange={set('scheduled_time')} />
           </div>
           <CurrencySelect value={form.currency} onChange={set('currency')} label="Valyuta" />
           <div>

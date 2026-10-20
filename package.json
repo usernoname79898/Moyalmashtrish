@@ -2,7 +2,7 @@
   "name": "avtoservis",
   "version": "1.0.0",
   "private": true,
-  "description": "Auto service management website — React + Express + SQLite",
+  "description": "Auto-electrical workshop website — React + Express + PostgreSQL",
   "workspaces": [
     "server",
     "client"

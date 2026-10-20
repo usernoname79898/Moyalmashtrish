@@ -150,7 +150,7 @@ const EXPECTED_COLUMNS = {
   settings: ['key', 'value'],
   media: ['id', 'filename', 'original_name', 'mime', 'size', 'object_key', 'created_at'],
   sessions: ['token_id', 'user_id', 'created_at', 'expires_at'],
-  work_logs: ['id', 'master_id', 'title', 'customer_name', 'customer_phone', 'car_brand', 'car_model', 'car_number', 'service_type', 'description', 'start_date', 'end_date', 'price', 'currency', 'status', 'is_public', 'notes', 'created_at', 'updated_at'],
+  work_logs: ['id', 'master_id', 'title', 'customer_name', 'customer_phone', 'car_brand', 'car_model', 'car_number', 'service_type', 'description', 'start_date', 'end_date', 'scheduled_time', 'price', 'currency', 'status', 'is_public', 'notes', 'created_at', 'updated_at'],
   work_log_images: ['id', 'work_log_id', 'image_path', 'original_filename', 'object_key', 'created_at'],
   inventory_products: ['id', 'name', 'type', 'brand', 'viscosity', 'unit', 'package_size', 'current_quantity', 'minimum_quantity', 'cost_price', 'markup_amount', 'currency', 'is_active', 'created_at', 'updated_at'],
   inventory_movements: ['id', 'product_id', 'movement_type', 'quantity', 'before_quantity', 'after_quantity', 'reference_type', 'reference_id', 'admin_id', 'note', 'created_at'],

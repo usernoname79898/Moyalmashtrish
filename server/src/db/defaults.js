@@ -8,19 +8,19 @@
  */
 const DEFAULT_SETTINGS = {
   site: {
-    name: 'AvtoServis',
+    name: 'Amper Avto Elektro',
     logo: '',
     favicon: '',
     phone: '+998 90 123 45 67',
-    email: 'info@avtoservis.uz',
-    telegram: 'https://t.me/avtoservis',
-    instagram: 'https://instagram.com/avtoservis',
+    email: 'info@amper.uz',
+    telegram: 'https://t.me/amperuz',
+    instagram: 'https://instagram.com/amper.uz',
     address: 'Toshkent sh., Chilonzor tumani, 12-mavze',
     working_hours: 'Dushanba – Shanba: 09:00 – 19:00',
   },
   hero: {
-    title: 'Avtomobilingiz uchun professional xizmat',
-    subtitle: 'Tajribali ustalar, zamonaviy uskunalar va sifatli ehtiyot qismlar. Avtomobilingiz ishonchli qo\'llarda.',
+    title: 'Avtomobil elektr tizimlari bo\'yicha ishonchli xizmat',
+    subtitle: 'Simlar, starter, generator, akkumulyator va sensorlar. Nosozlikning aniq sababini topamiz va ishonchli ta\'mirlaymiz.',
     background_image: '',
     button_text: 'Xizmatlar',
     button_link: '#services',
@@ -29,13 +29,13 @@ const DEFAULT_SETTINGS = {
     // derived from `about.experience` / `about.experience_label` so the two
     // sections can never show different numbers.
     stats_customers_value: '5000+',
-    stats_customers_label: 'Homiylangan mijozlar',
+    stats_customers_label: 'Tuzatilgan avtomobillar',
     stats_support_value: '24/7',
-    stats_support_label: 'Doimiy yordam',
+    stats_support_label: 'Tezkor yordam',
   },
   about: {
     title: 'Biz haqimizda',
-    description: 'AvtoServis — avtomobillarga texnik xizmat ko\'rsatish bo\'yicha yuqori malakali mutaxassislar jamoasi. Biz zamonaviy diagnostika uskunalari bilan ishlaymiz va har bir mijozga individual yondashamiz.',
+    description: 'Amper Avto Elektro — avtomobil elektr tizimlari, simlari va elektron jihozlarini ta\'mirlashga ixtisoslashgan ustaxona. Zamonaviy diagnostika uskunalari bilan har bir nosozlikning aniq sababini topamiz.',
     image: '',
     experience: 10,
     experience_label: 'Yillik tajriba',
@@ -46,23 +46,23 @@ const DEFAULT_SETTINGS = {
     // the same key, otherwise the panel shows "off" while the section is visible.
     show: true,
     phone: '+998 90 123 45 67',
-    telegram: 'https://t.me/avtoservis',
-    instagram: 'https://instagram.com/avtoservis',
+    telegram: 'https://t.me/amperuz',
+    instagram: 'https://instagram.com/amper.uz',
     address: 'Toshkent sh., Chilonzor tumani, 12-mavze',
-    email: 'info@avtoservis.uz',
+    email: 'info@amper.uz',
     working_hours: 'Dushanba – Shanba: 09:00 – 19:00\nYakshanba: dam olish kuni',
     map_link: '',
   },
   design: {
-    primary_color: '#e11d2e',
+    primary_color: '#079cf0',
     secondary_color: '#0f1722',
     font_family: 'Manrope',
     show_services: true,
     show_about: true,
   },
   footer: {
-    text: 'AvtoServis — avtomobilingizga sifatli texnik xizmat.',
-    copyright: '© 2026 AvtoServis. Barcha huquqlar himoyalangan.',
+    text: 'Amper Avto Elektro — avtomobilingizning elektr tizimlari uchun ishonchli xizmat.',
+    copyright: '© 2026 Amper Avto Elektro. Barcha huquqlar himoyalangan.',
   },
   worklog: {
     public_show: false,

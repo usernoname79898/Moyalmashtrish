@@ -17,17 +17,23 @@ const WORK_DIR = require('../paths').workDir;
 // fileable here immediately, and one the admin retires stops being offered. It
 // is read on demand and never mirrored into a constant: a static list would
 // quietly reject the shop's own ninth service.
-// "Mator xodovoy" used to be a single combined option -- it is now two services,
-// because an engine job and a chassis job are not the same work.
+// The retired combined label from the previous mechanical catalogue. It is kept
+// only so old records still render and remain editable.
 const LEGACY_SERVICE_TYPE = 'Mator xodovoy';
-const STATUSES = ['Jarayonda', 'Tugallangan'];
+const STATUSES = ['Kutilayotgan', 'Jarayonda', 'Tugallangan', 'Bekor qilingan'];
+const STATUS_TRANSITIONS = {
+  Kutilayotgan: ['Jarayonda', 'Bekor qilingan'],
+  Jarayonda: ['Tugallangan', 'Bekor qilingan'],
+  Tugallangan: [],
+  'Bekor qilingan': [],
+};
 const MAX_WORK_IMAGES = 15;
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
 const WORK_LIST_FIELDS = `
   w.id, w.master_id, w.title, w.customer_name, w.customer_phone, w.car_brand, w.car_model,
-  w.car_number, w.service_type, w.description, w.start_date, w.end_date, w.price, w.currency, w.status,
-  w.is_public, w.notes, w.created_at, w.updated_at, u.full_name AS master_name`;
+  w.car_number, w.service_type, w.description, w.start_date, w.end_date, w.scheduled_time,
+  w.price, w.currency, w.status, w.is_public, w.notes, w.created_at, w.updated_at, u.full_name AS master_name`;
 
 function ensureWorkDir() {
   if (!fs.existsSync(WORK_DIR)) fs.mkdirSync(WORK_DIR, { recursive: true });
@@ -211,8 +217,9 @@ async function serviceTypeCatalog() {
  *
  * The dropdown sends the stored spelling verbatim, so the exact match is the
  * normal path. The case- and space-insensitive pass after it exists for a value
- * typed or pasted by hand: "mator" must not be refused while the shop plainly
- * offers "Mator". Whichever row wins, its own spelling is what comes back, so
+ * typed or pasted by hand: "elektrodiagnostika" must not be refused while the
+ * shop plainly offers "Elektrodiagnostika". Whichever row wins, its own spelling
+ * is what comes back, so
  * `work_logs.service_type` and `services.name` stay byte-identical and a later
  * rename of the service cannot silently fork the two.
  *
@@ -249,12 +256,13 @@ function resolveServiceType(catalog, raw) {
 function validateWorkBody(b, previousServiceType, catalog) {
   const service_type = String(b.service_type || '').trim();
   const status = String(b.status || 'Jarayonda').trim();
+  const scheduledTime = String(b.scheduled_time || '').trim();
   const price = Number(b.price === '' || b.price === null || b.price === undefined ? 0 : b.price);
   const title = String(b.title || '').trim();
   if (!title) return { error: 'Ish nomi kiritilishi shart' };
   if (title.length > 200) return { error: 'Ish nomi juda uzun' };
   // An unchanged service_type is always accepted -- including the retired
-  // "Mator xodovoy" -- so editing the price or status of an old log does not force
+  // legacy label -- so editing the price or status of an old log does not force
   // the master to re-classify work they did not touch. Anything that does change
   // has to be a service the shop offers today, which is what stops a retired name
   // from being written again. The stored value is the catalogue's own spelling.
@@ -266,7 +274,7 @@ function validateWorkBody(b, previousServiceType, catalog) {
     } else if (service_type === LEGACY_SERVICE_TYPE) {
       return {
         error:
-          `Xizmat turi noto'g'ri: "${LEGACY_SERVICE_TYPE}" endi Mator va Xodovoy deb ikkiga ajratildi`,
+          `Xizmat turi noto'g'ri: "${LEGACY_SERVICE_TYPE}" eski katalogdan qolgan va endi ishlatilmaydi. Katalogdan xizmatni tanlang.`,
       };
     } else if (resolved.inactive) {
       return { error: `Xizmat turi faol emas: "${resolved.inactive}"` };
@@ -275,6 +283,9 @@ function validateWorkBody(b, previousServiceType, catalog) {
     }
   }
   if (!STATUSES.includes(status)) return { error: 'Ish holati noto\'g\'ri' };
+  if (scheduledTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(scheduledTime)) {
+    return { error: 'Navbat vaqti noto\'g\'ri (HH:MM)' };
+  }
   if (!Number.isFinite(price) || price < 0 || price > 1e12) return { error: 'Narx noto\'g\'ri' };
   // The price is the amount charged for the job and is quoted in one currency,
   // chosen with the log. It is a NUMERIC(14,2) label like the warehouse's, so the
@@ -297,6 +308,7 @@ function validateWorkBody(b, previousServiceType, catalog) {
     description: clean(b.description, 5000),
     start_date: clean(b.start_date, 20),
     end_date: clean(b.end_date, 20),
+    scheduled_time: scheduledTime,
     price,
     currency,
     status,
@@ -332,14 +344,31 @@ router.get('/', async (req, res) => {
   }
   if (String(req.query.q || '').trim()) {
     const like = '%' + String(req.query.q).trim() + '%';
-    // ILIKE keeps SQLite's case-insensitive LIKE behaviour.
-    conds.push('(w.title ILIKE ? OR w.customer_name ILIKE ? OR w.car_model ILIKE ? OR w.car_brand ILIKE ?)');
-    params.push(like, like, like, like);
+    conds.push(`(w.title ILIKE ? OR w.customer_name ILIKE ? OR w.customer_phone ILIKE ?
+      OR w.car_brand ILIKE ? OR w.car_model ILIKE ? OR w.car_number ILIKE ?
+      OR CAST(w.id AS TEXT) ILIKE ?)`);
+    params.push(like, like, like, like, like, like, like);
   }
   const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
-  const rows = await db
-    .prepare(`SELECT ${WORK_LIST_FIELDS} FROM work_logs w LEFT JOIN users u ON u.id = w.master_id ${where} ORDER BY w.created_at DESC, w.id DESC`)
-    .all(params);
+  const wantsPage = String(req.query.page || '').trim() !== '' || String(req.query.per_page || '').trim() !== '';
+  const baseSql = `SELECT ${WORK_LIST_FIELDS} FROM work_logs w LEFT JOIN users u ON u.id = w.master_id ${where} ORDER BY w.created_at DESC, w.id DESC`;
+  let rows;
+  let pagination = null;
+  if (wantsPage) {
+    const totalRow = await db.prepare(`SELECT COUNT(*)::int total FROM work_logs w ${where}`).get(params);
+    const total = Number(totalRow.total) || 0;
+    const perPageRaw = Number.parseInt(req.query.per_page, 10);
+    const perPage = Math.min(100, Math.max(1, Number.isInteger(perPageRaw) ? perPageRaw : 8));
+    const pages = Math.max(1, Math.ceil(total / perPage));
+    const pageRaw = Number.parseInt(req.query.page, 10);
+    const page = Math.min(pages, Math.max(1, Number.isInteger(pageRaw) ? pageRaw : 1));
+    rows = await db
+      .prepare(`${baseSql} LIMIT ? OFFSET ?`)
+      .all([...params, perPage, (page - 1) * perPage]);
+    pagination = { page, per_page: perPage, total, pages };
+  } else {
+    rows = await db.prepare(baseSql).all(params);
+  }
   // One batched query for the whole page, so the list does not pay a per-row
   // round trip just to show which oil went into which job.
   const mats = await materialsFor(rows.map((r) => r.id));
@@ -349,7 +378,7 @@ router.get('/', async (req, res) => {
     w.materials = mats.get(row.id) || [];
     out.push(w);
   }
-  res.json({ worklogs: out });
+  res.json(pagination ? { worklogs: out, pagination } : { worklogs: out });
 });
 
 router.get('/stats', async (req, res) => {
@@ -368,9 +397,24 @@ router.get('/stats', async (req, res) => {
   }
   const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
   const row = await db
-    .prepare(`SELECT COUNT(*)::int total, COALESCE(SUM(CASE WHEN status = 'Tugallangan' THEN 1 ELSE 0 END), 0)::int completed, COALESCE(SUM(CASE WHEN status = 'Jarayonda' THEN 1 ELSE 0 END), 0)::int in_progress, COALESCE(SUM(CASE WHEN status = 'Tugallangan' AND currency = 'UZS' THEN price ELSE 0 END), 0) earnings FROM work_logs ${where}`)
+    .prepare(`SELECT COUNT(*)::int total,
+      COALESCE(SUM(CASE WHEN status = 'Kutilayotgan' THEN 1 ELSE 0 END), 0)::int waiting,
+      COALESCE(SUM(CASE WHEN status = 'Jarayonda' THEN 1 ELSE 0 END), 0)::int in_progress,
+      COALESCE(SUM(CASE WHEN status = 'Tugallangan' THEN 1 ELSE 0 END), 0)::int completed,
+      COALESCE(SUM(CASE WHEN status = 'Bekor qilingan' THEN 1 ELSE 0 END), 0)::int cancelled,
+      COALESCE(SUM(CASE WHEN status = 'Tugallangan' AND currency = 'UZS' THEN price ELSE 0 END), 0) earnings
+      FROM work_logs ${where}`)
     .get(params);
-  res.json({ stats: { total: row.total, completed: row.completed, inProgress: row.in_progress, earnings: Number(row.earnings) || 0 } });
+  res.json({
+    stats: {
+      total: row.total,
+      waiting: row.waiting,
+      inProgress: row.in_progress,
+      completed: row.completed,
+      cancelled: row.cancelled,
+      earnings: Number(row.earnings) || 0,
+    },
+  });
 });
 
 router.post('/', async (req, res) => {
@@ -406,12 +450,12 @@ router.post('/', async (req, res) => {
     const work = await t
       .prepare(`INSERT INTO work_logs
         (master_id, title, customer_name, customer_phone, car_brand, car_model, car_number,
-         service_type, description, start_date, end_date, price, currency, status, notes, is_public)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         service_type, description, start_date, end_date, scheduled_time, price, currency, status, notes, is_public)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING id`)
       .one(
         masterId, v.title, v.customer_name, v.customer_phone, v.car_brand, v.car_model, v.car_number,
-        v.service_type, v.description, v.start_date, v.end_date, v.price, v.currency, v.status, v.notes, isPublic
+        v.service_type, v.description, v.start_date, v.end_date, v.scheduled_time, v.price, v.currency, v.status, v.notes, isPublic
       );
     await consumeMaterials(t, req, work.id, materials);
     return work;
@@ -449,6 +493,25 @@ router.get('/:id', async (req, res) => {
   res.json({ work: decorated });
 });
 
+router.patch('/:id/status', async (req, res) => {
+  const work = await loadWork(req.params.id);
+  if (!work) return res.status(404).json({ error: 'Ish topilmadi' });
+  if (!canAccess(req, work)) return res.status(403).json({ error: 'Forbidden: insufficient permissions' });
+  const next = String((req.body && req.body.status) || '').trim();
+  if (!STATUSES.includes(next)) return res.status(400).json({ error: 'Ish holati noto\'g\'ri' });
+  if (next === work.status) {
+    return res.status(409).json({ error: `Ish allaqachon "${work.status}" holatida` });
+  }
+  const allowed = STATUS_TRANSITIONS[work.status] || [];
+  if (!allowed.includes(next)) {
+    return res.status(409).json({
+      error: `"${work.status}" holatidan "${next}" holatiga o'tib bo'lmaydi`,
+    });
+  }
+  await db.prepare('UPDATE work_logs SET status = ?, updated_at = app_now() WHERE id = ?').run(next, work.id);
+  res.json({ work: await decorate(await loadWork(work.id)) });
+});
+
 router.put('/:id', async (req, res) => {
   const work = await loadWork(req.params.id);
   if (!work) return res.status(404).json({ error: 'Ish topilmadi' });
@@ -465,12 +528,14 @@ router.put('/:id', async (req, res) => {
   // so an unawaited write would return the previous values.
   await db.prepare(`UPDATE work_logs SET
       title = ?, customer_name = ?, customer_phone = ?, car_brand = ?, car_model = ?, car_number = ?,
-      service_type = ?, description = ?, start_date = ?, end_date = ?, price = ?, currency = ?, status = ?, notes = ?,
+      service_type = ?, description = ?, start_date = ?, end_date = ?, scheduled_time = ?,
+      price = ?, currency = ?, status = ?, notes = ?,
       is_public = ?, updated_at = app_now()
     WHERE id = ?`)
     .run(
       v.title, v.customer_name, v.customer_phone, v.car_brand, v.car_model, v.car_number,
-      v.service_type, v.description, v.start_date, v.end_date, v.price, v.currency, v.status, v.notes,
+      v.service_type, v.description, v.start_date, v.end_date, v.scheduled_time,
+      v.price, v.currency, v.status, v.notes,
       isPublic, work.id
     );
   res.json({ work: await decorate(await loadWork(work.id)) });

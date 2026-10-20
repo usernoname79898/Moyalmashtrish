@@ -96,7 +96,7 @@ export default function AdminLogin() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0b0f17] px-4 py-10">
-      <div className="absolute inset-0 bg-[radial-gradient(50%_40%_at_50%_0%,rgba(225,29,46,0.12),transparent)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(50%_40%_at_50%_0%,rgba(7,156,240,0.12),transparent)]" />
       <div className="absolute -left-32 -bottom-32 h-96 w-96 rounded-full bg-[rgb(var(--c-primary))]/10 blur-3xl" />
       <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-sky-500/5 blur-3xl" />
 
@@ -109,7 +109,7 @@ export default function AdminLogin() {
           <p className="mt-1 text-sm text-white/50">
             {needsSetup && mode === 'login'
               ? 'Tizim sozlanmagan — Super admin yarating'
-              : `Login yozing — ${site.name || 'AvtoServis'} boshqaruvi`}
+              : `Login yozing — ${site.name || 'Amper Avto Elektro'} boshqaruvi`}
           </p>
         </div>
 

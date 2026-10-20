@@ -5,10 +5,21 @@
 @tailwind utilities;
 
 :root {
-  --c-primary: 225 29 46;
+  --c-primary: 7 156 240;
   --c-secondary: 15 23 34;
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-heading: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --admin-bg: #0b0d16;
+  --admin-sidebar: #0f1220;
+  --admin-card: #191c27;
+  --admin-input: #20232e;
+  --admin-border: #2b2f3b;
+  --admin-text: #f4f5f7;
+  --admin-muted: #9295a3;
+  --admin-red: #ff101a;
+  --admin-green: #00c98b;
+  --admin-orange: #ffaa00;
+  --admin-blue: #079cf0;
 }
 
 html {
@@ -82,6 +93,57 @@ h1, h2 {
   }
   .section-pad {
     @apply py-20 md:py-28;
+  }
+
+  .admin-card {
+    @apply rounded-2xl border;
+    background-color: var(--admin-card);
+    border-color: var(--admin-border);
+    box-shadow: 0 22px 45px -34px rgba(0, 0, 0, 0.95), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+  .admin-field {
+    @apply w-full rounded-xl px-3.5 py-2.5 text-sm outline-none transition-colors duration-150;
+    background-color: var(--admin-input);
+    border: 1px solid var(--admin-border);
+    color: var(--admin-text);
+  }
+  .admin-field::placeholder {
+    color: #6f7486;
+  }
+  .admin-field:focus {
+    border-color: var(--admin-red);
+    box-shadow: 0 0 0 3px rgba(255, 16, 26, 0.14);
+  }
+  .admin-field:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+  .admin-label {
+    @apply mb-1.5 block text-[11px] font-semibold uppercase;
+    letter-spacing: 0.08em;
+    color: var(--admin-muted);
+  }
+  .admin-btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0;
+    background-color: var(--admin-red);
+    box-shadow: 0 12px 30px -14px rgba(255, 16, 26, 0.8);
+  }
+  .admin-btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40;
+    border: 1px solid var(--admin-border);
+    color: var(--admin-muted);
+  }
+  .admin-btn-ghost:hover:not(:disabled) {
+    background-color: rgba(255, 255, 255, 0.04);
+    color: var(--admin-text);
+  }
+  .admin-icon-btn {
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40;
+    color: var(--admin-muted);
+  }
+  .admin-icon-btn:hover:not(:disabled) {
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--admin-text);
   }
 }
 

@@ -113,19 +113,18 @@ async function seed() {
 
         const { rows } = await client.query('SELECT COUNT(*) AS c FROM services');
         if (Number(rows[0].c) === 0) {
-          // The catalogue, not a hard-coded list of screens. Mator and Xodovoy are
-          // two services: an engine job and a chassis job are priced, parts and
-          // debts differently, so offering them as one "Mator xodovoy" entry made
-          // the shop pick a single wrong label for both. The retired combined name
-          // is deliberately absent -- migration 006 deactivates it on databases
-          // that already carry it, and this list is what a new database gets.
+          // The catalogue, not a hard-coded list of screens. This is an
+          // auto-electrical workshop: the six services cover diagnostics, wiring,
+          // starting/charging, batteries, lighting and electronic modules. Migration
+          // 010 retires the previous mechanical catalogue on databases that already
+          // carry it, and this list is what a new database gets.
           const services = [
-            ['Mator', 'Dvigatel ta\'mirlash: kapital va joriy ta\'mirlash, moy va filtrlarni almashtirish.', 'Sifatli ehtiyot qismlar|Kafolatli ta\'mirlash|Tajribali ustalar', '', 'engine', '', 1],
-            ['Xodovoy', 'Xodovoy qismlar ta\'mirlash: asosiy qism, amortizator, rul va tormoz tizimlari.', 'Kuchli suspensiya|Aniq diagnostika|Ishonchli ta\'mirlash', '', 'wrench', '', 2],
-            ['Diagnostika', 'Komputer diagnostikasi yordamida avtomobilingizning barcha tizimlarini tekshiramiz.', 'Xatolarni aniq aniqlash|Tezkor natija|Sizga qulay vaqt', '', 'diagnostic', '', 3],
-            ['Programma', 'Avtomobil tizimlarini sozlash, chip tuning va dasturiy ta\'minotni yangilash xizmatlari.', 'Quvvat oshishi|Yoqilgan\'i tejalishi|Tizim barqarorligi', '', 'chip', '', 4],
-            ['Elektrik', 'Avtomobil elektr qismlarini diagnostika qilish va ta\'mirlash: starter, generator, simlar.', 'Zamonaviy uskunalar|Aniq sababni topish|Ishonchli ta\'mirlash', '', 'bolt', '', 5],
-            ['Moy almashtirish', 'Dvigatel moyi va filtrlarni tez va sifatli almashtirish. Barcha turdagi moylar.', 'Moy turini tanlashda yordam|Tez xizmat|Toza ish joyi', '', 'oil', '', 6],
+            ['Elektrodiagnostika', 'Avtomobil elektr tizimlarini kompyuter diagnostikasi bilan tekshiramiz: xatolik kodlari, simlar va datchiklar.', 'Aniq xatolikni topish|Tezkor tashxis|To\'liq hisobot', '', 'diagnostic', '', 1],
+            ['Elektr simlari', 'Simlar, ulanishlar va o\'tkazgichlarni ta\'mirlaymiz: uzilish, qisqa tutashuv va oksidlanish.', 'Uzilishni tez topish|Ishonchli ulanish|Kafolatli ta\'mir', '', 'bolt', '', 2],
+            ['Starter va generator', 'Starter, generator va zaryadlash tizimini ta\'mirlash hamda almashtirish.', 'Ishonchli ishga tushish|Zaryadni tiklash|Tezkor ta\'mir', '', 'refresh', '', 3],
+            ['Akkumulyator', 'Akkumulyatorni tekshirish, zaryadlash va almashtirish. Quvvat va kuchlanishni nazorat qilamiz.', 'Quvvatni tekshirish|Tez almashtirish|Maslahat va kafolat', '', 'battery', '', 4],
+            ['Yoritish tizimi', 'Fara, stop, burilish chiroqlari va salon yoritgichlarini ta\'mirlash.', 'Yorug\'likni tiklash|To\'g\'ri ulanish|Xavfsiz haydash', '', 'light', '', 5],
+            ['ECU va sensorlar', 'Dvigatel boshqaruv bloki, immobilayzer va datchiklarni diagnostika qilish va ta\'mirlash.', 'Elektron nosozliklarni topish|Dasturiy sozlash|Ishonchli ta\'mir', '', 'chip', '', 6],
           ];
           for (const s of services) {
             await client.query(

@@ -16,9 +16,9 @@ export default function Hero() {
     : '10+';
 
   const stats = [
-    { value: hero.stats_customers_value || '5000+', label: hero.stats_customers_label || 'Homiylangan mijozlar' },
+    { value: hero.stats_customers_value || '5000+', label: hero.stats_customers_label || 'Tuzatilgan avtomobillar' },
     { value: experienceValue, label: about.experience_label || 'Yillik tajriba' },
-    { value: hero.stats_support_value || '24/7', label: hero.stats_support_label || 'Doimiy yordam' },
+    { value: hero.stats_support_value || '24/7', label: hero.stats_support_label || 'Tezkor yordam' },
   ];
 
   const buttonLink = safeHref(hero.button_link) || '#services';
@@ -48,10 +48,10 @@ export default function Hero() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
             </span>
-            Professional avto xizmat
+            Avto elektro xizmat
           </div>
           <h1 className="mx-auto max-w-3xl text-4xl font-extrabold leading-[1.05] tracking-tight text-white sm:text-5xl md:mx-0 lg:text-6xl">
-            {hero.title || "Avtomobilingiz uchun professional xizmat"}
+            {hero.title || "Avtomobil elektr tizimlari bo'yicha ishonchli xizmat"}
           </h1>
           <div className={'mx-auto mt-6 h-1 w-24 rounded-full bg-[rgb(var(--c-primary))] shadow-lg shadow-[rgb(var(--c-primary))/50] md:mx-0'} aria-hidden="true" />
           <p className="mx-auto mt-5 max-w-xl text-lg text-white/70 md:mx-0">

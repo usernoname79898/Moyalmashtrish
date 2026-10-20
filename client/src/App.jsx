@@ -5,6 +5,7 @@ import AdminLayout from './pages/admin/AdminLayout';
 import AdminLogin from './pages/admin/AdminLogin';
 import SettingsPage from './pages/admin/SettingsPage';
 import WorkLogs from './pages/admin/WorkLogs';
+import QueuePage from './pages/admin/QueuePage';
 import DebtLedger from './pages/admin/DebtLedger';
 import ProtectedRoute from './pages/admin/ProtectedRoute';
 
@@ -25,7 +26,7 @@ export default function App() {
         <Route index element={<Navigate to="worklogs" replace />} />
         <Route path="worklogs" element={<WorkLogs lockedStatus="Tugallangan" />} />
         <Route path="debts" element={<DebtLedger />} />
-        <Route path="queue" element={<WorkLogs lockedStatus="Jarayonda" />} />
+        <Route path="queue" element={<QueuePage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Home />} />

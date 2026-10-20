@@ -21,12 +21,12 @@ export default function Contact() {
 
   return (
     <section id="contact" className="relative py-20 md:py-28">
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(60%_50%_at_100%_100%,rgba(225,29,46,0.07),transparent)]" />
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(60%_50%_at_100%_100%,rgba(7,156,240,0.07),transparent)]" />
       <div className="container-x">
         <SectionTitle
           eyebrow="Aloqa"
           title="Biz bilan bog'laning"
-          description="Savollaringiz bo'lsa, istalgan yo'l orqali biz bilan bog'lanishingiz mumkin. Sizga yordam berishdan mamnunmiz."
+          description="Avtomobilingiz elektr tizimida muammo bo'lsa, istalgan yo'l orqali biz bilan bog'laning. Aniq tashxis va ishonchli ta'mir."
         />
 
         <div className="grid gap-6 lg:grid-cols-5">

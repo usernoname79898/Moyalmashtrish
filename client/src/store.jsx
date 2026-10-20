@@ -49,13 +49,13 @@ export function AppProvider({ children }) {
       // feeds `rgb(var(--c-primary))`, which has no alpha slot.
       return `${part(0)} ${part(1)} ${part(2)}`;
     };
-    root.style.setProperty('--c-primary', hexToRgb(d.primary_color, '225 29 46'));
+    root.style.setProperty('--c-primary', hexToRgb(d.primary_color, '7 156 240'));
     root.style.setProperty('--c-secondary', hexToRgb(d.secondary_color, '15 23 34'));
     root.style.setProperty('--font-sans', `'${d.font_family || 'Inter'}', system-ui, sans-serif`);
     const display = d.font_family === 'Manrope' ? 'Manrope' : d.font_family === 'Arial' ? 'Arial' : d.font_family === 'Georgia' ? 'Georgia' : d.font_family;
     root.style.setProperty('--font-heading', `'${display || 'Space Grotesk'}', 'Inter', system-ui, sans-serif`);
 
-    document.title = site.name || 'AvtoServis';
+    document.title = site.name || 'Amper Avto Elektro';
 
     if (site.favicon) {
       let link = document.querySelector("link[rel='icon']");

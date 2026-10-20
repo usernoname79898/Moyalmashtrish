@@ -1,55 +1,41 @@
 /**
  * The service catalogue as the app shows it.
  *
- * Deliberately free of JSX and of React, so the places that are easy to get wrong
- * -- "is Mator a separate option from Xodovoy", "does the retired combined name
- * still appear" -- are plain data that can be asserted directly instead of being
- * read out of a rendered component.
+ * Deliberately free of JSX and of React, so the values the screens offer are
+ * plain data that can be asserted directly. This is the bundled baseline; the
+ * live list comes from the server (`client/src/serviceTypes.js`, backed by the
+ * `services` table that /admin/services edits).
  *
- * This module is the *bundled* half: the baseline six, their icons, and the rules
- * for a value the catalogue no longer carries. The lists the screens actually
- * offer come from the server (client/src/serviceTypes.js, backed by the `services`
- * table that /admin/services edits), because an admin who adds a service there
- * expects the work-log and debt pickers to offer it without a deploy. Both halves
- * are used together: `serviceOptions(current, names)` takes the live list and
- * falls back to the baseline below when it has not arrived yet. `DebtLedger.jsx`,
- * `WorkLogs.jsx`, `AdminLogin.jsx`, `Footer.jsx` and `WorkGallery.jsx` all draw
- * from here, so a catalogue change is one edit and cannot leave one screen behind.
+ * `serviceOptions(current, names)` takes the live list and falls back to the
+ * baseline below while it is loading. `DebtLedger.jsx`, `WorkLogs.jsx`,
+ * `AdminLogin.jsx`, `Footer.jsx` and `WorkGallery.jsx` all draw from here.
  *
- * The server owns the authoritative rules (`server/src/routes/worklogs.js` for
- * work-log service types, the `services` table for the catalogue itself). This
- * module mirrors them so the browser can offer the same options, and the mirror is
- * enforced by the P20 test groups, which import these very values.
- *
- * Mator and Xodovoy used to ship as one combined entry. They are separate services
- * that happen to be done on the same lift, so they are separate options: a debt
- * for an engine job and a debt for a suspension job are not the same debt. The
- * combined name is kept here only so existing records can still be recognised and
- * rendered -- it is never offered as a choice.
+ * `LEGACY_SERVICE_NAME` is the retired combined label from the previous
+ * (mechanical) catalogue. It is never offered, but a record filed before the
+ * switch must still render and stay editable.
  */
 
-/** The six services, in the order they are offered. */
+/** The six auto-electrical services, in the order they are offered. */
 export const SERVICE_NAMES = [
-  'Mator',
-  'Xodovoy',
-  'Diagnostika',
-  'Programma',
-  'Elektrik',
-  'Moy almashtirish',
+  'Elektrodiagnostika',
+  'Elektr simlari',
+  'Starter va generator',
+  'Akkumulyator',
+  'Yoritish tizimi',
+  'ECU va sensorlar',
 ];
 
-/** Retired combined name. Never selectable; still valid on a record that has it. */
+/** Retired combined name. Never selectable; still valid on an old record. */
 export const LEGACY_SERVICE_NAME = 'Mator xodovoy';
 
 /** Icons, keyed by service name. Unknown names fall back to `wrench`. */
 export const SERVICE_ICONS = {
-  Mator: 'engine',
-  Xodovoy: 'wrench',
-  Diagnostika: 'diagnostic',
-  Programma: 'chip',
-  Elektrik: 'bolt',
-  'Moy almashtirish': 'oil',
-  // Retired combined name: a work log filed before the split still deserves an icon.
+  Elektrodiagnostika: 'diagnostic',
+  'Elektr simlari': 'bolt',
+  'Starter va generator': 'refresh',
+  Akkumulyator: 'battery',
+  'Yoritish tizimi': 'light',
+  'ECU va sensorlar': 'chip',
   [LEGACY_SERVICE_NAME]: 'engine',
 };
 
