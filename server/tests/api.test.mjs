@@ -5188,6 +5188,59 @@ async function readinessTests() {
   check(r.status === 200 && r.data.work.customer_name === p25Name('mijoz4'),
     'P25.9 and the customer it was filed with', JSON.stringify(r.data.work && r.data.work.customer_name));
 
+  // P26. The navbat form has no car fields
+  // =========================================================================
+  // The navbat form lost its three car fields: the workshop writes down who
+  // comes, when and for what, not which car it is. The car that is already on
+  // a record must survive an edit and must still travel with the navbat when
+  // it is turned into a job.
+  const p26Tag = Date.now();
+  const p26Name = (s) => `P26 ${s} ${p26Tag}`;
+
+  group('P26.1 The navbat form has no car fields any more');
+  const p26Form = fs.readFileSync(path.join(srcRoot, 'pages', 'admin', 'AppointmentsPage.jsx'), 'utf8');
+  for (const gone of ['Avtomobil markasi', 'Davlat raqami', 'form.car_brand', 'form.car_model', 'form.car_number']) {
+    check(!p26Form.includes(gone), `P26.1 the form no longer has "${gone}"`, 'the field is still in the form');
+  }
+  check(p26Form.includes('Mavjud mijoz') && p26Form.includes('Xizmat turi') && p26Form.includes('Sana *')
+    && p26Form.includes('Vaqt *'),
+  'P26.1 and the rest of the form is still there', 'a field is missing');
+
+  group('P26.2 A navbat can be filed without any car');
+  r = await p23.post('/api/admin/appointments', {
+    customer_name: p26Name('mijoz'), customer_phone: '+998901234570',
+    service_type: p23Service.name, scheduled_date: '2026-03-10', scheduled_time: '10:00',
+    master_id: masterRow.id,
+  });
+  const p26Appt = r.data && r.data.appointment;
+  check(r.status === 201 && !!p26Appt, 'P26.2 the navbat is filed', `status=${r.status} ${JSON.stringify(r.data)}`);
+  check(!!p26Appt && !p26Appt.car_brand && !p26Appt.car_model && !p26Appt.car_number,
+    'P26.2 and it carries no car', JSON.stringify(p26Appt && [p26Appt.car_brand, p26Appt.car_model, p26Appt.car_number]));
+
+  group('P26.3 An edit that does not mention the car keeps it');
+  r = await p23.post('/api/admin/appointments', {
+    customer_name: p26Name('mijoz2'), customer_phone: '+998901234571',
+    car_brand: 'Chevrolet', car_model: 'Cobalt', car_number: '01A111BB',
+    service_type: p23Service.name, scheduled_date: '2026-03-11', scheduled_time: '11:00',
+  });
+  const p26Old = r.data && r.data.appointment;
+  check(r.status === 201 && !!p26Old && p26Old.car_brand === 'Chevrolet',
+    'P26.3 a navbat that still has a car is filed', `status=${r.status} ${JSON.stringify(r.data)}`);
+  r = await p23.put(`/api/admin/appointments/${p26Old.id}`, { notes: p26Name('tahrir') });
+  check(r.status === 200 && r.data.appointment.car_brand === 'Chevrolet' && r.data.appointment.car_number === '01A111BB',
+    'P26.3 the car of the record survives the edit', JSON.stringify(r.data.appointment && [r.data.appointment.car_brand, r.data.appointment.car_number]));
+  check(r.status === 200 && r.data.appointment.customer_name === p26Name('mijoz2')
+    && r.data.appointment.customer_phone === '+998901234571',
+  'P26.3 and so does the customer it was filed with', JSON.stringify(r.data.appointment && [r.data.appointment.customer_name, r.data.appointment.customer_phone]));
+
+  group('P26.4 The car of a navbat travels with it into the job');
+  r = await p23.post(`/api/admin/appointments/${p26Old.id}/convert`, {
+    master_id: masterRow.id, title: p26Name('ish'), price: 300000,
+  });
+  check(r.status === 201 && !!r.data.work, 'P26.4 the navbat becomes a job', `status=${r.status} ${JSON.stringify(r.data)}`);
+  check(r.status === 201 && r.data.work.car_brand === 'Chevrolet' && r.data.work.car_number === '01A111BB',
+    'P26.4 and the job keeps the car of the navbat', JSON.stringify(r.data.work && [r.data.work.car_brand, r.data.work.car_number]));
+
   await p22db.end();
 }
 

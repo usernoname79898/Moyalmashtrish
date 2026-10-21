@@ -328,13 +328,20 @@ function AppointmentCard({ a, isSA, onEdit, onStatus, onConvert, onCancel }) {
 
 const EMPTY = {
   customer_id: '', vehicle_id: '', customer_name: '', customer_phone: '',
-  car_brand: '', car_model: '', car_number: '', service_type: '',
-  scheduled_date: '', scheduled_time: '', master_id: '', status: 'Kutilayotgan', notes: '',
+  service_type: '', scheduled_date: '', scheduled_time: '', master_id: '', status: 'Kutilayotgan', notes: '',
 };
 
 function AppointmentForm({ isSA, initial, masters, onClose, onSaved }) {
   const isEdit = !!initial.id;
-  const [form, setForm] = useState({ ...EMPTY, ...initial, master_id: initial.master_id || '', customer_id: initial.customer_id || '', vehicle_id: initial.vehicle_id || '' });
+  // The car of a record is not edited any more: the form carries no car field
+  // of its own, so the server keeps what is already stored on the appointment.
+  const [form, setForm] = useState(() => {
+    const start = { ...EMPTY, ...initial, master_id: initial.master_id || '', customer_id: initial.customer_id || '', vehicle_id: initial.vehicle_id || '' };
+    delete start.car_brand;
+    delete start.car_model;
+    delete start.car_number;
+    return start;
+  });
   const [customers, setCustomers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [error, setError] = useState('');
@@ -366,13 +373,9 @@ function AppointmentForm({ isSA, initial, masters, onClose, onSaved }) {
   }
 
   function chooseVehicle(id) {
-    const vehicle = vehicles.find((v) => String(v.id) === String(id));
     setForm((current) => ({
       ...current,
       vehicle_id: id,
-      car_brand: vehicle ? vehicle.brand : current.car_brand,
-      car_model: vehicle ? vehicle.model : current.car_model,
-      car_number: vehicle ? vehicle.plate_number : current.car_number,
     }));
   }
 
@@ -384,6 +387,11 @@ function AppointmentForm({ isSA, initial, masters, onClose, onSaved }) {
       const payload = { ...form };
       if (!payload.customer_id) delete payload.customer_id;
       if (!payload.vehicle_id) delete payload.vehicle_id;
+      // The car of the record is not the form's business: it is not sent, so
+      // the server keeps the car that is already on the appointment.
+      delete payload.car_brand;
+      delete payload.car_model;
+      delete payload.car_number;
       if (!isSA) delete payload.master_id;
       else if (!payload.master_id) payload.master_id = '';
       if (isEdit) await api.put('/admin/appointments/' + initial.id, payload);
@@ -427,18 +435,6 @@ function AppointmentForm({ isSA, initial, masters, onClose, onSaved }) {
           <div>
             <label className="label">Telefon</label>
             <input className="field" value={form.customer_phone} onChange={set('customer_phone')} placeholder="+998 90 000 00 00" />
-          </div>
-          <div>
-            <label className="label">Avtomobil markasi</label>
-            <input className="field" value={form.car_brand} onChange={set('car_brand')} placeholder="Chevrolet" />
-          </div>
-          <div>
-            <label className="label">Model</label>
-            <input className="field" value={form.car_model} onChange={set('car_model')} placeholder="Cobalt" />
-          </div>
-          <div>
-            <label className="label">Davlat raqami</label>
-            <input className="field" value={form.car_number} onChange={set('car_number')} placeholder="01 A 777 AA" />
           </div>
           <div>
             <label className="label">Xizmat turi *</label>
