@@ -4,6 +4,7 @@ import { useAdmin } from '../../store';
 import Icon from '../../components/icons';
 import { Loading, Alert, Badge, Modal, Toggle, ConfirmDialog, EmptyState, Spinner } from '../../components/ui';
 import { SERVICE_NAMES, serviceOptions } from '../../serviceCatalog';
+import { paymentMethodOptions } from '../../paymentMethods';
 import { useServiceTypes } from '../../serviceTypes';
 import { money as formatMoney, DEFAULT_CURRENCY } from '../../money';
 import CurrencySelect from '../../components/CurrencySelect';
@@ -273,11 +274,13 @@ function WorkCard({ w, isSA, onEdit, onDelete, onOpenLightbox, reload, onError }
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/50">
             {isSA && <span>👤 {w.master_name || 'Usta'}</span>}
-            {(w.car_brand || w.car_model) && <span>🚗 {[w.car_brand, w.car_model].filter(Boolean).join(' ')}</span>}
-            {w.car_number && <span>#{w.car_number}</span>}
             {w.customer_name && <span>Mijoz: {w.customer_name}</span>}
             {w.start_date && <span>📅 {w.start_date}{w.scheduled_time ? ` · ${w.scheduled_time}` : ''}</span>}
-            {Number(w.price) > 0 && <span className="font-semibold text-emerald-400">{fmt(w.price, w.currency)}</span>}
+            {isSA && Number(w.paid_amount) > 0 && (
+              <span className="font-semibold text-emerald-400">
+                To'langan: {fmt(w.paid_amount, w.currency)}{w.payment_method ? ` · ${w.payment_method}` : ''}
+              </span>
+            )}
           </div>
           {w.description && <p className="mt-2 line-clamp-2 text-sm text-white/60">{w.description}</p>}
         </div>
@@ -311,18 +314,12 @@ function WorkCard({ w, isSA, onEdit, onDelete, onOpenLightbox, reload, onError }
 }
 
 const EMPTY_FORM = {
-  title: '', customer_id: '', vehicle_id: '', customer_name: '', customer_phone: '', car_brand: '', car_model: '', car_number: '',
+  title: '', customer_id: '', vehicle_id: '', customer_name: '', customer_phone: '',
   service_type: '', description: '', diagnosis: '', start_date: '', end_date: '', scheduled_time: '',
-  parts_cost: '', labor_cost: '', price: '', status: 'Jarayonda',
-  payment_status: 'unpaid', paid_amount: '', payment_method: '',
+  status: 'Jarayonda',
+  paid_amount: '', payment_method: '',
   notes: '', is_public: false, master_id: '', currency: DEFAULT_CURRENCY,
 };
-
-const PAYMENT_STATUSES = [
-  ['unpaid', "To'lanmagan"],
-  ['partially_paid', "Qisman to'langan"],
-  ['paid', "To'langan"],
-];
 
 const PAYMENT_BADGES = {
   unpaid: { label: "To'lanmagan", kind: 'danger' },
@@ -356,7 +353,6 @@ export function WorkForm({ isSA, initial, defaultStatus, masters, onClose, onSav
   const [materials, setMaterials] = useState([]);
   const [matErr, setMatErr] = useState('');
   const [customers, setCustomers] = useState([]);
-  const [vehicles, setVehicles] = useState([]);
   const [history, setHistory] = useState([]);
   const fileRef = useRef(null);
 
@@ -367,13 +363,6 @@ export function WorkForm({ isSA, initial, defaultStatus, masters, onClose, onSav
       .then(({ customers: rows }) => setCustomers(rows || []))
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (!form.customer_id) { setVehicles([]); return; }
-    api.get(`/admin/vehicles?customer_id=${form.customer_id}&per_page=100`)
-      .then(({ vehicles: rows }) => setVehicles(rows || []))
-      .catch(() => setVehicles([]));
-  }, [form.customer_id]);
 
   useEffect(() => {
     if (!isEdit) { setHistory([]); return; }
@@ -387,20 +376,11 @@ export function WorkForm({ isSA, initial, defaultStatus, masters, onClose, onSav
     setForm((f) => ({
       ...f,
       customer_id: id,
+      // The car of the record is not editable any more, so it is detached when
+      // the customer changes: a vehicle belongs to one customer only.
       vehicle_id: '',
       customer_name: customer ? customer.full_name : '',
       customer_phone: customer ? (customer.phone || '') : '',
-    }));
-  }
-
-  function chooseVehicle(id) {
-    const vehicle = vehicles.find((v) => String(v.id) === String(id));
-    setForm((f) => ({
-      ...f,
-      vehicle_id: id,
-      car_brand: vehicle ? (vehicle.brand || '') : '',
-      car_model: vehicle ? (vehicle.model || '') : '',
-      car_number: vehicle ? (vehicle.plate_number || '') : '',
     }));
   }
 
@@ -454,6 +434,17 @@ export function WorkForm({ isSA, initial, defaultStatus, masters, onClose, onSav
     setSaving(true);
     try {
       const payload = { ...form };
+      // The fields the form no longer owns are not sent: the server keeps what
+      // is already on the record, so an old price, a car or a parts cost is
+      // never quietly rewritten by an edit that did not touch it. The price and
+      // the payment status are derived on the server from the paid amount.
+      delete payload.price;
+      delete payload.payment_status;
+      delete payload.parts_cost;
+      delete payload.labor_cost;
+      delete payload.car_brand;
+      delete payload.car_model;
+      delete payload.car_number;
       // is_public faqat super admin tomonidan boshqariladi; usta yubormasligi kerak,
       // aks holda server uni 403 bilan rad etadi (server alohida tekshiradi).
       if (isSA) {
@@ -541,31 +532,12 @@ export function WorkForm({ isSA, initial, defaultStatus, masters, onClose, onSav
             </select>
           </div>
           <div>
-            <label className="label">Mavjud avtomobil</label>
-            <select className="field" value={form.vehicle_id || ''} onChange={(e) => chooseVehicle(e.target.value)} disabled={!form.customer_id}>
-              <option value="" className="bg-[#111725]">{form.customer_id ? 'Avtomobil tanlanmagan' : 'Avval mijozni tanlang'}</option>
-              {vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id} className="bg-[#111725]">{[vehicle.brand, vehicle.model].filter(Boolean).join(' ')}{vehicle.plate_number ? ` · ${vehicle.plate_number}` : ''}</option>)}
-            </select>
-          </div>
-          <div>
             <label className="label">Mijoz ismi</label>
             <input className="field" value={form.customer_name} onChange={set('customer_name')} placeholder="Ali Valiyev" />
           </div>
           <div>
             <label className="label">Mijoz telefoni</label>
             <input className="field" value={form.customer_phone} onChange={set('customer_phone')} placeholder="+998 90 000 00 00" />
-          </div>
-          <div>
-            <label className="label">Avtomobil markasi</label>
-            <input className="field" value={form.car_brand} onChange={set('car_brand')} placeholder="Chevrolet" />
-          </div>
-          <div>
-            <label className="label">Avtomobil modeli</label>
-            <input className="field" value={form.car_model} onChange={set('car_model')} placeholder="Cobalt" />
-          </div>
-          <div>
-            <label className="label">Davlat raqami</label>
-            <input className="field" value={form.car_number} onChange={set('car_number')} placeholder="01 A 777 AA" />
           </div>
           <div>
             <label className="label">Xizmat turi *</label>
@@ -618,41 +590,37 @@ export function WorkForm({ isSA, initial, defaultStatus, masters, onClose, onSav
           </div>
           <CurrencySelect value={form.currency} onChange={set('currency')} label="Valyuta" />
           <div>
-            <label className="label">Ish narxi</label>
-            <input type="number" min="0" className="field" value={form.price} onChange={set('price')} placeholder="550000" />
-          </div>
-          <div>
             <label className="label">Ish holati *</label>
             <select className="field" value={form.status} onChange={set('status')}>
               {STATUSES.map((s) => <option key={s} value={s} className="bg-[#111725]">{s}</option>)}
             </select>
           </div>
-          <div>
-            <label className="label">Ehtiyot qismlar narxi</label>
-            <input type="number" min="0" className="field" value={form.parts_cost ?? ''} onChange={set('parts_cost')} placeholder="0" />
-          </div>
-          <div>
-            <label className="label">Ish haqi (labor) narxi</label>
-            <input type="number" min="0" className="field" value={form.labor_cost ?? ''} onChange={set('labor_cost')} placeholder="0" />
-          </div>
-          {isSA && (
+          {isSA ? (
             <>
               <div>
-                <label className="label">To'lov holati</label>
-                <select className="field" value={form.payment_status || 'unpaid'} onChange={set('payment_status')}>
-                  {PAYMENT_STATUSES.map(([value, label]) => <option key={value} value={value} className="bg-[#111725]">{label}</option>)}
+                <label className="label">To'langan summa</label>
+                <input type="number" min="0" className="field" value={form.paid_amount ?? ''} onChange={set('paid_amount')} placeholder="0" />
+                <p className="mt-1 text-xs text-white/35">Kiritilgan summa ishning narxi sifatida saqlanadi.</p>
+              </div>
+              <div>
+                <label className="label">To'lov turi</label>
+                <select className="field" value={form.payment_method || ''} onChange={set('payment_method')}>
+                  <option value="" className="bg-[#111725]">Tanlanmagan</option>
+                  {paymentMethodOptions(form.payment_method).map((option) => (
+                    <option key={option.value} value={option.value} className="bg-[#111725]">{option.label}</option>
+                  ))}
                 </select>
               </div>
-              <div>
-                <label className="label">To'langan summa</label>
-                <input type="number" min="0" className="field" value={form.paid_amount ?? ''} onChange={set('paid_amount')} disabled={form.payment_status !== 'partially_paid'} placeholder={form.payment_status === 'paid' ? 'To\'liq narx' : '0'} />
-                {form.payment_status === 'partially_paid' && Number(form.paid_amount) > 0 && <p className="mt-1 text-xs text-white/35">Qoldiq: {fmt(Math.max(Number(form.price || 0) - Number(form.paid_amount || 0), 0), form.currency)}</p>}
-              </div>
-              <div>
-                <label className="label">To'lov usuli</label>
-                <input className="field" value={form.payment_method || ''} onChange={set('payment_method')} placeholder="Naqd, karta, o'tkazma..." />
-              </div>
             </>
+          ) : (
+            <div className="sm:col-span-2">
+              <label className="label">To'lov ma'lumotlari</label>
+              <p className="text-xs text-white/40">
+                {isEdit && Number(initial.paid_amount) > 0
+                  ? `To'langan: ${fmt(initial.paid_amount, initial.currency)}${initial.payment_method ? ` · ${initial.payment_method}` : ''}`
+                  : "To'langan summa va to'lov turini super admin kiritadi."}
+              </p>
+            </div>
           )}
         </div>
 

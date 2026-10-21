@@ -5052,6 +5052,142 @@ async function readinessTests() {
     JSON.stringify(p24Stats),
   );
 
+  // =========================================================================
+  // P25. The simplified work journal
+  // =========================================================================
+  // The workshop stopped working with cars and with a price of its own: a job
+  // is filed against a customer, and the only money that is written down is
+  // what was paid and how it was paid. These tests prove that the panels
+  // really lost those fields, and that the money that is left behaves the way
+  // the workshop agreed -- and that nothing that is already on a record is
+  // quietly rewritten by an edit.
+  const p25Tag = Date.now();
+  const p25Name = (s) => `P25 ${s} ${p25Tag}`;
+
+  group('P25.1 The admin panel has no cars section any more');
+  const p25Layout = fs.readFileSync(path.join(srcRoot, 'pages', 'admin', 'AdminLayout.jsx'), 'utf8');
+  check(!/admin\/vehicles/.test(p25Layout), 'P25.1 the sidebar no longer offers "Avtomobillar"', 'the sidebar still links to it');
+  const p25App = fs.readFileSync(path.join(srcRoot, 'App.jsx'), 'utf8');
+  check(!/VehiclesPage/.test(p25App) && !/path="vehicles"/.test(p25App),
+    'P25.1 and there is no route to it either', 'the route is still there');
+  check(!fs.existsSync(path.join(srcRoot, 'pages', 'admin', 'VehiclesPage.jsx')),
+    'P25.1 and the page itself is gone', 'the page is still there');
+  r = await p23.get('/api/admin/vehicles?per_page=5');
+  check(r.status === 200, 'P25.1 the vehicles API still answers, because the appointments need it', `status=${r.status} ${JSON.stringify(r.data)}`);
+
+  group('P25.2 The work-log form offers the agreed fields and nothing more');
+  const p25Form = fs.readFileSync(path.join(srcRoot, 'pages', 'admin', 'WorkLogs.jsx'), 'utf8');
+  for (const gone of ['Mavjud avtomobil', 'Avtomobil markasi', 'Avtomobil modeli', 'Davlat raqami',
+    'Ish narxi', 'Ehtiyot qismlar narxi', 'Ish haqi (labor) narxi', "To'lov holati"]) {
+    check(!p25Form.includes(gone), `P25.2 the form no longer has "${gone}"`, 'the field is still in the form');
+  }
+  for (const kept of ['Ish nomi', 'Mijoz ismi', 'Mijoz telefoni', 'Xizmat turi', 'Ish boshlanish sanasi',
+    'Ish tugash sanasi', 'Ish holati', "To'langan summa", "To'lov turi"]) {
+    check(p25Form.includes(kept), `P25.2 the form still has "${kept}"`, 'the field is missing');
+  }
+  check(!/value=\{form\.price\}/.test(p25Form) && !/value=\{form\.parts_cost/.test(p25Form)
+    && !/value=\{form\.labor_cost/.test(p25Form),
+  'P25.2 and it writes no price, parts cost or labour cost of its own', 'a money input is still bound');
+  check(p25Form.includes('paymentMethodOptions'),
+    'P25.2 the payment type is a picker, not a free text field', 'the picker is missing');
+  const p25Methods = fs.readFileSync(path.join(srcRoot, 'paymentMethods.js'), 'utf8');
+  check(/Naqd pul/.test(p25Methods) && /Karta/.test(p25Methods) && /O'tkazma|O‘tkazma/.test(p25Methods),
+    'P25.2 and the picker offers cash, card and transfer', p25Methods.slice(0, 400));
+
+  group('P25.3 The queue shows the customer, the phone and the service type');
+  const p25Queue = fs.readFileSync(path.join(srcRoot, 'pages', 'admin', 'QueuePage.jsx'), 'utf8');
+  check(!/Avtomobil/.test(p25Queue), 'P25.3 the queue list has no car column', 'a car column is still there');
+  check(!/car_brand|car_model|car_number/.test(p25Queue), 'P25.3 and it reads no car data at all', 'car data is still read');
+  check(p25Queue.includes("Mijoz ma'lumotlari") && p25Queue.includes('Xizmat turi'),
+    'P25.3 the customer details and the service type are there', 'a column is missing');
+
+  group('P25.4 The amount that was paid is the price of the job');
+  r = await p23.post('/api/admin/worklogs', {
+    master_id: masterRow.id, title: p25Name("to'langan"), service_type: p23Service.name,
+    status: 'Tugallangan', customer_name: p25Name('mijoz'), customer_phone: '+998901234567',
+    paid_amount: 250000, payment_method: 'Naqd pul',
+  });
+  const p25Work = r.data && r.data.work;
+  check(r.status === 201 && !!p25Work, 'P25.4 the job is filed', `status=${r.status} ${JSON.stringify(r.data)}`);
+  check(!!p25Work && Number(p25Work.price) === 250000, 'P25.4 and the price is what was paid', JSON.stringify(p25Work && p25Work.price));
+  check(!!p25Work && Number(p25Work.paid_amount) === 250000 && p25Work.payment_status === 'paid',
+    'P25.4 the money and the status follow it', JSON.stringify(p25Work && [p25Work.paid_amount, p25Work.payment_status]));
+  check(!!p25Work && p25Work.payment_method === 'Naqd pul', 'P25.4 the payment type is stored as it was picked', JSON.stringify(p25Work && p25Work.payment_method));
+
+  group('P25.5 A job that was paid nothing is not paid');
+  r = await p23.post('/api/admin/worklogs', {
+    master_id: masterRow.id, title: p25Name("to'lanmagan"), service_type: p23Service.name,
+    status: 'Jarayonda', customer_name: p25Name('mijoz2'), customer_phone: '+998901234568',
+    paid_amount: 0,
+  });
+  const p25Free = r.data && r.data.work;
+  check(r.status === 201 && !!p25Free && Number(p25Free.price) === 0 && p25Free.payment_status === 'unpaid',
+    'P25.5 it stays unpaid', JSON.stringify(p25Free && [p25Free.price, p25Free.payment_status]));
+
+  group('P25.6 An edit never lowers a price that is already on the record');
+  r = await p23.post('/api/admin/worklogs', {
+    master_id: masterRow.id, title: p25Name('eski'), service_type: p23Service.name,
+    status: 'Jarayonda', customer_name: p25Name('mijoz3'), customer_phone: '+998901234569',
+    price: 500000, paid_amount: 0, payment_status: 'unpaid',
+  });
+  const p25Old = r.data && r.data.work;
+  check(r.status === 201 && !!p25Old && Number(p25Old.price) === 500000,
+    'P25.6 an old job keeps its total', JSON.stringify(p25Old && p25Old.price));
+  r = await p23.put(`/api/admin/worklogs/${p25Old.id}`, {
+    title: p25Name('eski'), service_type: p23Service.name, status: 'Jarayonda',
+    customer_name: p25Name('mijoz3'), customer_phone: '+998901234569',
+    paid_amount: 200000, payment_method: 'Karta',
+  });
+  check(r.status === 200 && Number(r.data.work.price) === 500000,
+    'P25.6 a part payment does not lower the total', JSON.stringify(r.data.work && r.data.work.price));
+  check(r.status === 200 && Number(r.data.work.paid_amount) === 200000 && r.data.work.payment_status === 'partially_paid',
+    'P25.6 and the job is partly paid', JSON.stringify(r.data.work && [r.data.work.paid_amount, r.data.work.payment_status]));
+  r = await p23.put(`/api/admin/worklogs/${p25Old.id}`, {
+    title: p25Name('eski'), service_type: p23Service.name, status: 'Jarayonda',
+    customer_name: p25Name('mijoz3'), customer_phone: '+998901234569',
+    paid_amount: 800000, payment_method: 'Karta',
+  });
+  check(r.status === 200 && Number(r.data.work.price) === 800000 && r.data.work.payment_status === 'paid',
+    'P25.6 a payment that is bigger raises the total', JSON.stringify(r.data.work && [r.data.work.price, r.data.work.payment_status]));
+
+  group('P25.7 An edit that does not touch the money keeps it');
+  r = await p23.put(`/api/admin/worklogs/${p25Work.id}`, {
+    title: p25Name("to'langan (tahrir)"), service_type: p23Service.name, status: 'Tugallangan',
+  });
+  check(r.status === 200 && Number(r.data.work.paid_amount) === 250000 && r.data.work.payment_status === 'paid',
+    'P25.7 the payment is untouched', JSON.stringify(r.data.work && [r.data.work.paid_amount, r.data.work.payment_status]));
+  check(r.status === 200 && Number(r.data.work.price) === 250000, 'P25.7 and so is the price', JSON.stringify(r.data.work && r.data.work.price));
+  check(r.status === 200 && r.data.work.payment_method === 'Naqd pul', 'P25.7 and the payment type', JSON.stringify(r.data.work && r.data.work.payment_method));
+
+  group('P25.8 A master may not move the money');
+  r = await p23m.put(`/api/admin/worklogs/${p25Work.id}`, {
+    title: p25Name("to'langan (tahrir)"), service_type: p23Service.name, status: 'Tugallangan',
+    paid_amount: 999999, payment_method: 'Karta',
+  });
+  check(r.status === 200 && Number(r.data.work.paid_amount) === 250000 && r.data.work.payment_method === 'Naqd pul',
+    'P25.8 the payment the master sent is ignored', JSON.stringify(r.data.work && [r.data.work.paid_amount, r.data.work.payment_method]));
+
+  group('P25.9 The car, the costs and the total of an old record survive an edit');
+  const p25Legacy = await p23db.query(
+    `INSERT INTO work_logs (master_id, title, service_type, status, price, currency, parts_cost, labor_cost, car_brand, car_model, car_number, customer_name)
+     VALUES ($1, $2, $3, 'Jarayonda', 400000, 'UZS', 120000, 80000, 'Chevrolet', 'Cobalt', '01A999BC', $4)
+     RETURNING id`,
+    [masterRow.id, p25Name('legacy'), p23Service.name, p25Name('mijoz4')],
+  );
+  const p25LegacyId = p25Legacy.rows[0].id;
+  r = await p23.put(`/api/admin/worklogs/${p25LegacyId}`, {
+    title: p25Name('legacy (tahrir)'), service_type: p23Service.name, status: 'Jarayonda',
+    paid_amount: 400000, payment_method: "O'tkazma",
+  });
+  check(r.status === 200, 'P25.9 the old job is edited', `status=${r.status} ${JSON.stringify(r.data)}`);
+  check(r.status === 200 && Number(r.data.work.parts_cost) === 120000 && Number(r.data.work.labor_cost) === 80000,
+    'P25.9 its parts cost and labour cost are kept', JSON.stringify(r.data.work && [r.data.work.parts_cost, r.data.work.labor_cost]));
+  check(r.status === 200 && r.data.work.car_brand === 'Chevrolet' && r.data.work.car_number === '01A999BC',
+    'P25.9 and so is its car', JSON.stringify(r.data.work && [r.data.work.car_brand, r.data.work.car_number]));
+  check(r.status === 200 && Number(r.data.work.price) === 400000, 'P25.9 and the total it was filed with', JSON.stringify(r.data.work && r.data.work.price));
+  check(r.status === 200 && r.data.work.customer_name === p25Name('mijoz4'),
+    'P25.9 and the customer it was filed with', JSON.stringify(r.data.work && r.data.work.customer_name));
+
   await p22db.end();
 }
 

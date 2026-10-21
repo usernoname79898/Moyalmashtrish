@@ -8,7 +8,6 @@ import WorkLogs from './pages/admin/WorkLogs';
 import DebtLedger from './pages/admin/DebtLedger';
 import QueuePage from './pages/admin/QueuePage';
 import CustomersPage from './pages/admin/CustomersPage';
-import VehiclesPage from './pages/admin/VehiclesPage';
 import MastersPage from './pages/admin/MastersPage';
 import StatisticsPage from './pages/admin/StatisticsPage';
 import ServicesPage from './pages/admin/ServicesPage';
@@ -34,7 +33,6 @@ export default function App() {
         <Route path="queue" element={<QueuePage />} />
         <Route path="appointments" element={<AppointmentsPage />} />
         <Route path="customers" element={<CustomersPage />} />
-        <Route path="vehicles" element={<VehiclesPage />} />
         <Route path="masters" element={<MastersPage />} />
         <Route path="statistics" element={<StatisticsPage />} />
         <Route path="services" element={<ServicesPage />} />

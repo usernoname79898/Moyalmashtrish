@@ -273,13 +273,21 @@ function resolveServiceType(catalog, raw) {
  * @param {{ name: string, active: boolean }[]} catalog as returned by
  *   serviceTypeCatalog(); loaded once per request by the caller rather than
  *   inside the pure check, so this function stays testable on its own
+ * @param {object} [existing] the row being edited, for the PUT path. A field the
+ *   body does not mention keeps the value already stored on it, so an edit that
+ *   did not touch it never quietly rewrites it.
  * @returns the cleaned body, or `{ error }`
  */
-function validateWorkBody(b, previousServiceType, catalog) {
+function validateWorkBody(b, previousServiceType, catalog, existing) {
+  const has = (key) => Object.prototype.hasOwnProperty.call(b, key);
   const service_type = String(b.service_type || '').trim();
   const status = String(b.status || 'Jarayonda').trim();
   const scheduledTime = String(b.scheduled_time || '').trim();
-  const price = Number(b.price === '' || b.price === null || b.price === undefined ? 0 : b.price);
+  // The form carries no job price of its own: the amount that was paid is the
+  // price of the job. A price that IS sent (an older API client) still wins, so
+  // `price_sent` tells the caller which of the two it is looking at.
+  const priceSent = b.price !== undefined && b.price !== null && b.price !== '';
+  const price = Number(priceSent ? b.price : 0);
   const title = String(b.title || '').trim();
   if (!title) return { error: 'Ish nomi kiritilishi shart' };
   if (title.length > 200) return { error: 'Ish nomi juda uzun' };
@@ -318,8 +326,14 @@ function validateWorkBody(b, previousServiceType, catalog) {
   let parts_cost;
   let labor_cost;
   try {
-    parts_cost = amount(b.parts_cost, 'Ehtiyot qismlar narxi');
-    labor_cost = amount(b.labor_cost, 'Ish haqi narxi');
+    // A field the body does not mention keeps the value already on the record:
+    // an edit that did not touch the parts cost must not zero it out.
+    parts_cost = has('parts_cost')
+      ? amount(b.parts_cost, 'Ehtiyot qismlar narxi')
+      : (existing ? Number(existing.parts_cost) || 0 : 0);
+    labor_cost = has('labor_cost')
+      ? amount(b.labor_cost, 'Ish haqi narxi')
+      : (existing ? Number(existing.labor_cost) || 0 : 0);
   } catch (err) {
     return { error: err.message };
   }
@@ -333,13 +347,17 @@ function validateWorkBody(b, previousServiceType, catalog) {
     return { error: err.message };
   }
   const clean = (v, n) => String(v || '').trim().slice(0, n);
+  // A field the body does not mention keeps the value already on the record: an
+  // edit that did not touch the customer, the car or the costs of a job must
+  // not quietly rewrite them.
+  const keep = (key, n) => (has(key) ? clean(b[key], n) : (existing ? clean(existing[key], n) : ''));
   return {
     title,
-    customer_name: clean(b.customer_name, 150),
-    customer_phone: clean(b.customer_phone, 40),
-    car_brand: clean(b.car_brand, 80),
-    car_model: clean(b.car_model, 80),
-    car_number: clean(b.car_number, 30),
+    customer_name: keep('customer_name', 150),
+    customer_phone: keep('customer_phone', 40),
+    car_brand: keep('car_brand', 80),
+    car_model: keep('car_model', 80),
+    car_number: keep('car_number', 30),
     service_type: canonicalType,
     description: clean(b.description, 5000),
     diagnosis: clean(b.diagnosis, 5000),
@@ -349,6 +367,7 @@ function validateWorkBody(b, previousServiceType, catalog) {
     parts_cost,
     labor_cost,
     price,
+    price_sent: priceSent,
     currency,
     status,
     notes: clean(b.notes, 2000),
@@ -400,7 +419,11 @@ async function resolveWorkRelations(b, v, existing) {
   if (!customer && vehicle && vehicle.customer_id) {
     customer = await crm.findCustomer(db, vehicle.customer_id);
   }
-  if (!vehicle && customer && (v.car_brand || v.car_model || v.car_number)) {
+  // A vehicle is looked up (or created) only when the body carries car details
+  // of its own. A body that merely keeps the car of an existing record must not
+  // create a vehicle behind the operator's back.
+  const carInBody = b.car_brand || b.car_model || b.car_number;
+  if (!vehicle && customer && carInBody) {
     vehicle = await crm.findOrCreateVehicle(db, {
       brand: v.car_brand,
       model: v.car_model,
@@ -423,7 +446,30 @@ async function resolveWorkRelations(b, v, existing) {
   };
 }
 
-function validatePayment(b, existing, price, privileged) {
+/**
+ * The money of a work log.
+ *
+ * The form carries no job price of its own: the amount that was paid IS the
+ * price of the job. So the price is derived -- a price that is sent explicitly
+ * (an older API client, the conversion of an appointment) still wins, and an
+ * edit never lowers a price that is already on the record, so an old total is
+ * not silently rewritten by a payment that is smaller than it.
+ *
+ * A master may not move the money -- only a super admin does -- so for a
+ * master the amount is the one already on the record.
+ */
+function resolveMoney(v, b, existing, privileged) {
+  let paid = existing ? Number(existing.paid_amount) || 0 : 0;
+  if (privileged && b.paid_amount !== undefined) {
+    paid = b.paid_amount === '' || b.paid_amount === null ? 0 : Number(b.paid_amount);
+  }
+  if (!Number.isFinite(paid) || paid < 0 || paid > 1e12) throw crm.badRequest("To'langan summa noto'g'ri");
+  const storedPrice = existing ? Number(existing.price) || 0 : 0;
+  const price = v.price_sent ? v.price : Math.max(storedPrice, paid);
+  return { paid, price };
+}
+
+function validatePayment(b, existing, price, privileged, paid) {
   if (!privileged) {
     return existing
       ? {
@@ -437,11 +483,11 @@ function validatePayment(b, existing, price, privileged) {
     ? (existing ? existing.payment_status : 'unpaid')
     : String(b.payment_status || '').trim();
   if (!PAYMENT_STATUSES.includes(status)) throw crm.badRequest("To'lov holati noto'g'ri");
-  let paid = b.paid_amount === undefined
-    ? (existing ? Number(existing.paid_amount) || 0 : 0)
-    : Number(b.paid_amount === '' || b.paid_amount === null ? 0 : b.paid_amount);
   if (!Number.isFinite(paid) || paid < 0 || paid > 1e12) throw crm.badRequest("To'langan summa noto'g'ri");
   if (paid > price) throw crm.badRequest("To'langan summa ish narxidan katta bo'lishi mumkin emas");
+  // The status follows the money: the form does not carry a status of its own,
+  // so a payment that was entered decides whether the job is unpaid, partly
+  // paid or paid. A client that sends a status of its own still decides it.
   if (b.payment_status === undefined && b.paid_amount !== undefined) {
     status = paid <= 0 ? 'unpaid' : paid >= price ? 'paid' : 'partially_paid';
   }
@@ -455,7 +501,7 @@ function validatePayment(b, existing, price, privileged) {
     paid_amount: paid,
     payment_method: b.payment_method === undefined && existing
       ? (existing.payment_method || '')
-      : crm.text(b.payment_method, "To'lov usuli", { max: 40 }),
+      : crm.text(b.payment_method, "To'lov turi", { max: 40 }),
   };
 }
 
@@ -620,8 +666,10 @@ router.post('/', async (req, res) => {
   if (v.error) return res.status(400).json({ error: v.error });
   const rel = await resolveWorkRelations(body, v, null);
   let payment;
+  let money;
   try {
-    payment = validatePayment(body, null, v.price, isSA(req.user));
+    money = resolveMoney(v, body, null, isSA(req.user));
+    payment = validatePayment(body, null, money.price, isSA(req.user), money.paid);
   } catch (err) {
     return res.status(err.status || 400).json({ error: err.message });
   }
@@ -651,7 +699,7 @@ router.post('/', async (req, res) => {
       .one(
         masterId, rel.customer_id, rel.vehicle_id, v.title, v.customer_name, v.customer_phone,
         v.car_brand, v.car_model, v.car_number, v.service_type, v.description, v.diagnosis,
-        v.start_date, v.end_date, v.scheduled_time, v.parts_cost, v.labor_cost, v.price,
+        v.start_date, v.end_date, v.scheduled_time, v.parts_cost, v.labor_cost, money.price,
         v.currency, v.status, payment.payment_status, payment.paid_amount, payment.payment_method,
         completedAt, v.notes, isPublic, req.user.id
       );
@@ -729,12 +777,14 @@ router.put('/:id', async (req, res) => {
   if ('is_public' in b && !isSA(req.user) && toFlag(b.is_public) !== currentPublic) {
     return res.status(403).json({ error: 'Faqat super admin saytda ko\'rsatishni sozlashi mumkin' });
   }
-  const v = validateWorkBody(b, work.service_type, await serviceTypeCatalog());
+  const v = validateWorkBody(b, work.service_type, await serviceTypeCatalog(), work);
   if (v.error) return res.status(400).json({ error: v.error });
   const rel = await resolveWorkRelations(b, v, work);
   let payment;
+  let money;
   try {
-    payment = validatePayment(b, work, v.price, isSA(req.user));
+    money = resolveMoney(v, b, work, isSA(req.user));
+    payment = validatePayment(b, work, money.price, isSA(req.user), money.paid);
   } catch (err) {
     return res.status(err.status || 400).json({ error: err.message });
   }
@@ -753,7 +803,7 @@ router.put('/:id', async (req, res) => {
       .run(
         v.title, rel.customer_id, rel.vehicle_id, v.customer_name, v.customer_phone,
         v.car_brand, v.car_model, v.car_number, v.service_type, v.description, v.diagnosis,
-        v.start_date, v.end_date, v.scheduled_time, v.parts_cost, v.labor_cost, v.price,
+        v.start_date, v.end_date, v.scheduled_time, v.parts_cost, v.labor_cost, money.price,
         v.currency, v.status, payment.payment_status, payment.paid_amount, payment.payment_method,
         completedAt, v.notes, isPublic, work.id
       );

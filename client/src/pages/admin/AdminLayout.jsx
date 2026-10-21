@@ -12,7 +12,6 @@ const NAV = [
   { to: '/admin/debts', icon: 'money', label: 'Qarz daftari' },
   { to: '/admin/services', icon: 'wrench', label: 'Xizmatlar', permission: 'services' },
   { to: '/admin/masters', icon: 'user', label: 'Ustalar', adminOnly: true },
-  { to: '/admin/vehicles', icon: 'car', label: 'Avtomobillar' },
   { to: '/admin/statistics', icon: 'dashboard', label: 'Statistika' },
   { to: '/admin/settings', icon: 'settings', label: 'Sayt sozlamalari', permission: 'content' },
 ];

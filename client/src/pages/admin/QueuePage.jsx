@@ -272,7 +272,7 @@ export default function QueuePage() {
                 id="queue-search"
                 type="search"
                 className="admin-field pl-10"
-                placeholder="Mijoz, telefon, avtomobil yoki raqam..."
+                placeholder="Mijoz, telefon yoki xizmat turi..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -328,12 +328,11 @@ export default function QueuePage() {
       <section className="space-y-3">
         <div className="hidden overflow-hidden rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-card)] lg:block">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1040px] text-left text-sm">
+            <table className="w-full min-w-[900px] text-left text-sm">
               <thead>
                 <tr className="border-b border-[var(--admin-border)] text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--admin-muted)]">
                   <th className="px-4 py-3.5">#</th>
                   <th className="px-4 py-3.5">Mijoz ma'lumotlari</th>
-                  <th className="px-4 py-3.5">Avtomobil</th>
                   <th className="px-4 py-3.5">Xizmat turi</th>
                   <th className="px-4 py-3.5">Holat</th>
                   <th className="px-4 py-3.5">Navbat vaqti</th>
@@ -512,21 +511,6 @@ function QueueRow({ work, number, busy, onEdit, onStart, onComplete, onCancel, o
         </div>
       </td>
       <td className="px-4 py-3.5">
-        <div className="font-medium text-[var(--admin-text)]">
-          {[work.car_brand, work.car_model].filter(Boolean).join(' ') || '—'}
-        </div>
-        <div className="mt-1 flex items-center gap-1.5 text-xs text-[var(--admin-muted)]">
-          <Icon name="car" size={13} />
-          {work.car_number ? (
-            <span className="rounded border border-[var(--admin-border)] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wide">
-              {work.car_number}
-            </span>
-          ) : (
-            <span>Raqam yo'q</span>
-          )}
-        </div>
-      </td>
-      <td className="px-4 py-3.5">
         <span className="inline-flex items-center gap-2 rounded-lg border border-[var(--admin-border)] bg-white/[0.03] px-2.5 py-1.5 text-xs font-medium text-[var(--admin-text)]">
           <Icon name={serviceIcon(work.service_type)} size={14} className="text-[var(--admin-muted)]" />
           <span className="max-w-[150px] truncate">{work.service_type || '—'}</span>
@@ -591,11 +575,6 @@ function QueueCard({ work, number, busy, onEdit, onStart, onComplete, onCancel, 
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 text-xs">
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--admin-muted)]">Avtomobil</div>
-          <div className="mt-0.5 font-medium text-[var(--admin-text)]">{[work.car_brand, work.car_model].filter(Boolean).join(' ') || '—'}</div>
-          {work.car_number && <div className="mt-0.5 font-mono text-[10px] text-[var(--admin-muted)]">{work.car_number}</div>}
-        </div>
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--admin-muted)]">Xizmat turi</div>
           <div className="mt-0.5 flex items-center gap-1.5 font-medium text-[var(--admin-text)]">
@@ -711,9 +690,9 @@ function EmptyQueue({ isSA, hasActiveFilters, onReset, onCreate }) {
 function SkeletonRows() {
   return Array.from({ length: 6 }).map((_, row) => (
     <tr key={row} className="border-b border-[var(--admin-border)]">
-      {Array.from({ length: 8 }).map((__, col) => (
+      {Array.from({ length: 7 }).map((__, col) => (
         <td key={col} className="px-4 py-4">
-          <div className={`h-3.5 animate-pulse rounded bg-white/[0.06] ${col === 0 ? 'w-8' : col === 1 ? 'w-36' : col === 7 ? 'ml-auto w-24' : 'w-20'}`} />
+          <div className={`h-3.5 animate-pulse rounded bg-white/[0.06] ${col === 0 ? 'w-8' : col === 1 ? 'w-36' : col === 6 ? 'ml-auto w-24' : 'w-20'}`} />
         </td>
       ))}
     </tr>
