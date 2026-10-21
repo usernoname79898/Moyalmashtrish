@@ -4,12 +4,11 @@ import { api } from '../../api';
 import { useAdmin } from '../../store';
 import Icon from '../../components/icons';
 import { Alert, ConfirmDialog, EmptyState, Spinner, Toggle } from '../../components/ui';
-import StatusBadge, { STATUSES } from '../../components/StatusBadge';
+import { STATUSES } from '../../components/StatusBadge';
 import { SERVICE_NAMES, serviceIcon, serviceOptions } from '../../serviceCatalog';
 import { useServiceTypes } from '../../serviceTypes';
 import { WorkForm } from './WorkLogs';
 
-const MONTHS = ['yan', 'fev', 'mar', 'apr', 'may', 'iyun', 'iyul', 'avg', 'sen', 'okt', 'noy', 'dek'];
 const PAGE_SIZES = [8, 16, 24, 50];
 
 const EMPTY_FILTERS = {
@@ -328,26 +327,21 @@ export default function QueuePage() {
       <section className="space-y-3">
         <div className="hidden overflow-hidden rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-card)] lg:block">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left text-sm">
+            <table className="w-full min-w-[640px] text-left text-sm">
               <thead>
                 <tr className="border-b border-[var(--admin-border)] text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--admin-muted)]">
-                  <th className="px-4 py-3.5">#</th>
                   <th className="px-4 py-3.5">Mijoz ma'lumotlari</th>
                   <th className="px-4 py-3.5">Xizmat turi</th>
-                  <th className="px-4 py-3.5">Holat</th>
-                  <th className="px-4 py-3.5">Navbat vaqti</th>
-                  <th className="px-4 py-3.5">Usta</th>
                   <th className="px-4 py-3.5 text-right">Harakatlar</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <SkeletonRows />
-                ) : rows.map((work, index) => (
+                ) : rows.map((work) => (
                   <QueueRow
                     key={work.id}
                     work={work}
-                    number={pagination ? (currentPage - 1) * perPage + index + 1 : index + 1}
                     busy={busyId === work.id}
                     onEdit={() => setEditing(work)}
                     onStart={() => changeStatus(work, 'Jarayonda')}
@@ -366,11 +360,10 @@ export default function QueuePage() {
 
         <div className="space-y-3 lg:hidden">
           {loading && <MobileSkeleton />}
-          {!loading && !listError && rows.map((work, index) => (
+          {!loading && !listError && rows.map((work) => (
             <QueueCard
               key={work.id}
               work={work}
-              number={pagination ? (currentPage - 1) * perPage + index + 1 : index + 1}
               busy={busyId === work.id}
               onEdit={() => setEditing(work)}
               onStart={() => changeStatus(work, 'Jarayonda')}
@@ -492,15 +485,9 @@ function StatCard({ icon, label, value, tone, hint }) {
   );
 }
 
-function QueueRow({ work, number, busy, onEdit, onStart, onComplete, onCancel, onDelete }) {
-  const date = formatDate(work.start_date);
+function QueueRow({ work, busy, onEdit, onStart, onComplete, onCancel, onDelete }) {
   return (
     <tr className="border-b border-[var(--admin-border)] transition-colors last:border-0 hover:bg-white/[0.025]">
-      <td className="px-4 py-3.5">
-        <span className="inline-flex min-w-[36px] items-center justify-center rounded-lg border border-[var(--admin-border)] bg-white/[0.03] px-2 py-1 text-xs font-bold text-[var(--admin-muted)]">
-          #{number}
-        </span>
-      </td>
       <td className="px-4 py-3.5">
         <div className="flex items-center gap-3">
           <Avatar name={work.customer_name} />
@@ -515,26 +502,6 @@ function QueueRow({ work, number, busy, onEdit, onStart, onComplete, onCancel, o
           <Icon name={serviceIcon(work.service_type)} size={14} className="text-[var(--admin-muted)]" />
           <span className="max-w-[150px] truncate">{work.service_type || '—'}</span>
         </span>
-      </td>
-      <td className="px-4 py-3.5"><StatusBadge status={work.status} /></td>
-      <td className="px-4 py-3.5">
-        <div className="whitespace-nowrap text-xs font-medium text-[var(--admin-text)]">{date || 'Belgilanmagan'}</div>
-        {work.scheduled_time && (
-          <div className="mt-1 flex items-center gap-1 text-[11px] text-[var(--admin-muted)]">
-            <Icon name="clock" size={12} />
-            {work.scheduled_time}
-          </div>
-        )}
-      </td>
-      <td className="px-4 py-3.5">
-        {work.master_name ? (
-          <div className="flex items-center gap-2">
-            <Avatar name={work.master_name} small />
-            <span className="max-w-[130px] truncate text-xs font-medium text-[var(--admin-text)]">{work.master_name}</span>
-          </div>
-        ) : (
-          <span className="text-xs text-[var(--admin-muted)]">Tayinlanmagan</span>
-        )}
       </td>
       <td className="px-4 py-3.5">
         {busy ? (
@@ -559,49 +526,26 @@ function QueueRow({ work, number, busy, onEdit, onStart, onComplete, onCancel, o
   );
 }
 
-function QueueCard({ work, number, busy, onEdit, onStart, onComplete, onCancel, onDelete }) {
-  const date = formatDate(work.start_date);
+function QueueCard({ work, busy, onEdit, onStart, onComplete, onCancel, onDelete }) {
   return (
     <div className="admin-card p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <Avatar name={work.customer_name} />
-          <div className="min-w-0">
-            <div className="truncate font-semibold text-[var(--admin-text)]">{work.customer_name || 'Mijoz'}</div>
-            <div className="truncate text-xs text-[var(--admin-muted)]">{work.customer_phone || 'Telefon kiritilmagan'}</div>
-          </div>
-        </div>
-        <StatusBadge status={work.status} />
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 text-xs">
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--admin-muted)]">Xizmat turi</div>
-          <div className="mt-0.5 flex items-center gap-1.5 font-medium text-[var(--admin-text)]">
-            <Icon name={serviceIcon(work.service_type)} size={13} className="text-[var(--admin-muted)]" />
-            <span className="truncate">{work.service_type || '—'}</span>
-          </div>
-        </div>
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--admin-muted)]">Navbat vaqti</div>
-          <div className="mt-0.5 font-medium text-[var(--admin-text)]">{date || 'Belgilanmagan'}{work.scheduled_time ? ` · ${work.scheduled_time}` : ''}</div>
-        </div>
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--admin-muted)]">Usta</div>
-          <div className="mt-0.5 flex items-center gap-1.5 font-medium text-[var(--admin-text)]">
-            {work.master_name ? (
-              <><Avatar name={work.master_name} small /><span className="truncate">{work.master_name}</span></>
-            ) : (
-              <span className="text-[var(--admin-muted)]">Tayinlanmagan</span>
-            )}
-          </div>
+      <div className="flex items-center gap-3">
+        <Avatar name={work.customer_name} />
+        <div className="min-w-0">
+          <div className="truncate font-semibold text-[var(--admin-text)]">{work.customer_name || 'Mijoz'}</div>
+          <div className="truncate text-xs text-[var(--admin-muted)]">{work.customer_phone || 'Telefon kiritilmagan'}</div>
         </div>
       </div>
 
-      {work.description && <p className="mt-3 line-clamp-2 text-xs text-[var(--admin-muted)]">{work.description}</p>}
+      <div className="mt-3 text-xs">
+        <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--admin-muted)]">Xizmat turi</div>
+        <div className="mt-0.5 flex items-center gap-1.5 font-medium text-[var(--admin-text)]">
+          <Icon name={serviceIcon(work.service_type)} size={13} className="text-[var(--admin-muted)]" />
+          <span className="truncate">{work.service_type || '—'}</span>
+        </div>
+      </div>
 
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-[var(--admin-border)] pt-3">
-        <span className="text-[11px] font-semibold text-[var(--admin-muted)]">#{number}</span>
+      <div className="mt-3 flex items-center justify-end gap-2 border-t border-[var(--admin-border)] pt-3">
         {busy ? (
           <Spinner className="h-4 w-4" />
         ) : (
@@ -690,9 +634,9 @@ function EmptyQueue({ isSA, hasActiveFilters, onReset, onCreate }) {
 function SkeletonRows() {
   return Array.from({ length: 6 }).map((_, row) => (
     <tr key={row} className="border-b border-[var(--admin-border)]">
-      {Array.from({ length: 7 }).map((__, col) => (
+      {Array.from({ length: 3 }).map((__, col) => (
         <td key={col} className="px-4 py-4">
-          <div className={`h-3.5 animate-pulse rounded bg-white/[0.06] ${col === 0 ? 'w-8' : col === 1 ? 'w-36' : col === 6 ? 'ml-auto w-24' : 'w-20'}`} />
+          <div className={`h-3.5 animate-pulse rounded bg-white/[0.06] ${col === 0 ? 'w-36' : col === 2 ? 'ml-auto w-24' : 'w-20'}`} />
         </td>
       ))}
     </tr>
@@ -709,26 +653,11 @@ function MobileSkeleton() {
           <div className="h-3 w-24 animate-pulse rounded bg-white/[0.06]" />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        {Array.from({ length: 4 }).map((__, i) => (
-          <div key={i} className="h-8 animate-pulse rounded bg-white/[0.06]" />
-        ))}
+      <div className="space-y-3">
+        <div className="h-8 w-40 animate-pulse rounded bg-white/[0.06]" />
       </div>
     </div>
   ));
-}
-
-function formatDate(value) {
-  if (!value) return '';
-  const text = String(value);
-  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (match) {
-    const month = Number(match[2]) - 1;
-    if (month >= 0 && month < 12) return `${match[3]} ${MONTHS[month]}, ${match[1]}`;
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return text;
-  return `${String(date.getDate()).padStart(2, '0')} ${MONTHS[date.getMonth()]}, ${date.getFullYear()}`;
 }
 
 function getInitials(name) {

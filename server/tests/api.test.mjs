@@ -5241,6 +5241,31 @@ async function readinessTests() {
   check(r.status === 201 && r.data.work.car_brand === 'Chevrolet' && r.data.work.car_number === '01A111BB',
     'P26.4 and the job keeps the car of the navbat', JSON.stringify(r.data.work && [r.data.work.car_brand, r.data.work.car_number]));
 
+  // P27. The queue list is only the customer and the service
+  // =========================================================================
+  // The queue lost everything but the three things the workshop needs to call
+  // a customer: the name, the phone number and the service type. The buttons
+  // that run the work (start, finish, edit, cancel, delete) stay, so the
+  // page can still do its job.
+  const p27Tag = Date.now();
+  const p27Name = (s) => `P27 ${s} ${p27Tag}`;
+
+  group('P27.1 The queue list shows the customer and the service, nothing else');
+  const p27Queue = fs.readFileSync(path.join(srcRoot, 'pages', 'admin', 'QueuePage.jsx'), 'utf8');
+  check(p27Queue.includes("Mijoz ma'lumotlari") && p27Queue.includes('Xizmat turi')
+    && p27Queue.includes('Harakatlar'),
+  'P27.1 the list has the customer, the service and the actions', 'a column is missing');
+  check(p27Queue.includes('customer_name') && p27Queue.includes('customer_phone'),
+    'P27.1 the name and the phone of the customer are there', 'the customer is missing');
+  check(!p27Queue.includes('Navbat vaqti'), 'P27.1 the list has no time column', 'the time is still there');
+  check(!/<StatusBadge/.test(p27Queue), 'P27.1 and no status column', 'the status is still there');
+  check(!/master_name/.test(p27Queue), 'P27.1 and no master column', 'the master is still there');
+  check(!/#\{number\}/.test(p27Queue) && !/start_date/.test(p27Queue),
+    'P27.1 and no row number either', 'the row number is still there');
+  check(p27Queue.includes('Ishni boshlash') && p27Queue.includes('Tugallash')
+    && p27Queue.includes('Tahrirlash') && p27Queue.includes("O'chirish"),
+  'P27.1 but the buttons that run the work are still there', 'a button is missing');
+
   await p22db.end();
 }
 
